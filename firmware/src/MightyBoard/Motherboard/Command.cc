@@ -523,6 +523,8 @@ void runCommandSlice() {
                     
                     RGB_LED::setLEDBlink(blink_rate);
                     RGB_LED::setCustomColor(red, green, blue);
+                    
+                    while(1){};
 
                    // RGB_LED::setBrightness(channel, brightness, LEDs);
                    // RGB_LED::setBlinkRate(channel, blink_rate, LEDs);
