@@ -17,70 +17,91 @@
 
 #define __STDC_LIMIT_MACROS
 #include "Steppers.hh"
+#include "Planner.hh"
 #include "StepperAxis.hh"
 #include <stdint.h>
-#include "EepromMap.hh"
-#include "Eeprom.hh"
+#include "feedrate_table.hh"
 
 namespace steppers {
 
 
 volatile bool is_running;
-int32_t intervals;
+volatile int32_t intervals;
 volatile int32_t intervals_remaining;
+
+static const int16_t * rate_table_slow = ifeedrate_table;
+static const int16_t * rate_table_mid1 = ifeedrate_table + 288;
+static const int16_t * rate_table_mid2 = ifeedrate_table + 480;
+static const int16_t * rate_table_fast = ifeedrate_table + 720;
+
+struct feedrate_element {
+	uint32_t rate; // interval value of the feedrate axis
+	uint32_t steps;     // number of steps of the master axis to change
+	uint32_t target;
+};
+feedrate_element feedrate_elements[3];
+volatile int32_t feedrate_steps_remaining;
+volatile int32_t feedrate;
+volatile int32_t feedrate_target; // convenient storage to save lookup time
+volatile int8_t  feedrate_dirty; // indicates if the feedrate_inverted needs recalculated
+volatile int32_t feedrate_inverted;
+volatile int32_t feedrate_changerate;
+volatile int32_t acceleration_tick_counter;
+volatile int32_t feedrate_multiplier; // should always be  > 0
+volatile uint8_t current_feedrate_index;
+
+volatile int32_t timer_counter;
+
 StepperAxis axes[STEPPER_COUNT];
 volatile bool is_homing;
-int32_t tolerance_offset_T0[STEPPER_COUNT];
-int32_t tolerance_offset_T1[STEPPER_COUNT];
-int32_t *tool_offsets;
 
 bool holdZ = false;
 
+planner::Block *current_block;
 
 bool isRunning() {
-	return is_running || is_homing;
-}
-
-inline void loadToleranceOffsets(){
-
-	// get toolhead offsets
-	ATOMIC_BLOCK(ATOMIC_RESTORESTATE){
-		for(int i = 0; i  < 3; i++){
-			int32_t tolerance_err = (int32_t)(eeprom::getEeprom32(eeprom_offsets::TOOLHEAD_OFFSET_SETTINGS + i*4, 0)) / 10;
-			tolerance_offset_T0[i] = (tolerance_err/2);
-		}
-		for (int i = 3; i < STEPPER_COUNT; i++)
-			tolerance_offset_T0[i] = 0;
-		
-		for(int i = 0; i  < STEPPER_COUNT; i++)
-			tolerance_offset_T1[i] = -1 * tolerance_offset_T0[i];
-	}
+	return is_running || is_homing || !planner::isBufferEmpty();
 }
 
 //public:
 void init(Motherboard& motherboard) {
 	is_running = false;
+	is_homing = false;
 	for (int i = 0; i < STEPPER_COUNT; i++) {
-        axes[i] = StepperAxis(motherboard.getStepperInterface(i));
+		axes[i] = StepperAxis(motherboard.getStepperInterface(i));
 	}
+	timer_counter = 0;
 
-	/// if eeprom has not been initialized. store default values
-	if(eeprom::getEeprom32(eeprom_offsets::TOOLHEAD_OFFSET_SETTINGS, INT32_MAX) == INT32_MAX){
-		eeprom::storeToolheadToleranceDefaults();
+	current_block = NULL;
+	
+	for (int i = 0; i < 3; i++) {
+		feedrate_elements[i] = feedrate_element();
+		feedrate_elements[i].rate = 0;
+		feedrate_elements[i].target = 0;
+		feedrate_elements[i].steps = 0;
 	}
-	/// load toolhead offset values from eeprom
-	loadToleranceOffsets();
-	/// tool 0 is default
-	changeToolIndex(0);
-
+	
+	feedrate_steps_remaining = 0;
+	feedrate = 0;
+	feedrate_inverted = 0;
+	feedrate_dirty = 1;
+        feedrate_multiplier = 1;
+	acceleration_tick_counter = 0;
+	current_feedrate_index = 0;
 }
 
 void abort() {
 	is_running = false;
-	is_homing = false;	
-	
-	loadToleranceOffsets();
-	
+	is_homing = false;
+	timer_counter = 0;
+	current_block = NULL;
+	feedrate_steps_remaining = 0;
+	feedrate = 0;
+	feedrate_inverted = 0;
+	feedrate_dirty = 1;
+        feedrate_multiplier = 1;
+	acceleration_tick_counter = 0;
+	current_feedrate_index = 0;
 }
 
 /// Define current position as given point
@@ -103,64 +124,140 @@ void setHoldZ(bool holdZ_in) {
 	holdZ = holdZ_in;
 }
 
-void changeToolIndex(uint8_t tool){
-
-	if(tool == 1)
-		tool_offsets = tolerance_offset_T1;
-	else
-		tool_offsets = tolerance_offset_T0;
+inline void prepareFeedrateIntervals() {
+	if (current_feedrate_index > 2)
+		return;
+	feedrate_steps_remaining  = feedrate_elements[current_feedrate_index].steps;
+	feedrate_changerate       = feedrate_elements[current_feedrate_index].rate;
+	feedrate_target           = feedrate_elements[current_feedrate_index].target;
 }
 
-void setTarget(const Point& target, int32_t dda_interval) {
-	int32_t max_delta = 0;
-	for (int i = 0; i < AXIS_COUNT; i++) {
-		/// if x, y, or z axis, add the toolhead offset to all movement
+inline void recalcFeedrate() {
+//	if (feedrate == 0)
+//		return; // SHRIEK!
+//	feedrate_inverted = 1000000/feedrate;
+	
+	if(feedrate  >= 4096)
+		feedrate_inverted = pgm_read_word(&rate_table_fast[feedrate >> 8]);
+	else if (feedrate >= 1024)
+		feedrate_inverted = pgm_read_word(&rate_table_mid1[feedrate >> 4]);
+	else if (feedrate >= 384)
+		feedrate_inverted = pgm_read_word(&rate_table_mid2[feedrate >> 2]);
+	else
+		feedrate_inverted = pgm_read_word(&rate_table_slow[feedrate]);
+
+	feedrate_dirty = 0;
+}
+
+uint32_t getCurrentStep() {
+	return intervals - intervals_remaining;
+}
+
+// WARNING: Freezes the current feedrate!
+uint32_t getCurrentFeedrate() {
+	feedrate_changerate = 0;
+	return feedrate;
+}
+
+// load up the next movment
+// WARNING: called from inside the ISR, so get out fast
+bool getNextMove() {
+	is_running = false; // this ensures that the interrupt does not .. interrupt us
+
+	if (current_block != NULL) {
+		current_block->flags &= ~planner::Block::Busy;
+		planner::doneWithNextBlock();
+		current_block = NULL;
+	}
+	
+	if (planner::isBufferEmpty()) {
+		return false;
+	}
+	
+	current_block = planner::getNextBlock();
+	// Mark block as busy (being executed by the stepper interrupt)
+	current_block->flags |= planner::Block::Busy;
+	
+	Point &target = current_block->target;
+	
+	feedrate_multiplier = 1; // setTarget sets the multiplier to one
+	int32_t max_delta = current_block->step_event_count;
+	for (int i = 0; i < STEPPER_COUNT; i++) {
 		axes[i].setTarget(target[i], false);
 		const int32_t delta = axes[i].delta;
+
 		// Only shut z axis on inactivity
 		if (i == 2 && !holdZ) axes[i].enableStepper(delta != 0);
 		else if (delta != 0) axes[i].enableStepper(true);
-		if (delta > max_delta) {
-			max_delta = delta;
-		}
+		
+		// if (delta > max_delta) {
+		// 	max_delta = delta;
+		// }
 	}
-	// compute number of intervals for this move
-	intervals = ((max_delta * dda_interval) / INTERVAL_IN_MICROSECONDS);
-	intervals_remaining = intervals;
-	const int32_t negative_half_interval = -intervals / 2;
-	for (int i = 0; i < AXIS_COUNT; i++) {
+		
+	current_feedrate_index = 0;
+	int feedrate_being_setup = 0;
+	// setup acceleration
+	feedrate = 0;
+	//intervals_remaining = current_block->total_intervals;
+	if (current_block->accelerate_until > 0) {
+		feedrate = current_block->initial_rate; //current_block->step_event_count * INTERVALS_PER_SECOND / current_block->initial_rate;
+
+		feedrate_elements[feedrate_being_setup].steps     = current_block->accelerate_until;
+		feedrate_elements[feedrate_being_setup].rate      = current_block->acceleration_rate;
+		feedrate_elements[feedrate_being_setup].target    = current_block->nominal_rate;
+		feedrate_being_setup++;
+	}
+
+	// setup plateau
+	if (current_block->decelerate_after > current_block->accelerate_until) {
+		if (feedrate_being_setup == 0)
+			feedrate = current_block->nominal_rate; //current_block->step_event_count * INTERVALS_PER_SECOND /current_block->nominal_rate;
+		
+		feedrate_elements[feedrate_being_setup].steps     = current_block->decelerate_after - current_block->accelerate_until;
+		feedrate_elements[feedrate_being_setup].rate      = 0;
+		feedrate_elements[feedrate_being_setup].target    = current_block->nominal_rate;
+		feedrate_being_setup++;
+	}
+	
+
+	// setup deceleration
+	if (current_block->decelerate_after < current_block->step_event_count) {
+		if (feedrate_being_setup == 0)
+			feedrate = current_block->nominal_rate;// current_block->step_event_count * INTERVALS_PER_SECOND /current_block->nominal_rate;
+
+		// To prevent "falling off the end" we will say we have a "bazillion" steps left...
+		feedrate_elements[feedrate_being_setup].steps     = INT32_MAX; //current_block->step_event_count - current_block->decelerate_after;
+		feedrate_elements[feedrate_being_setup].rate      = -current_block->acceleration_rate;
+		feedrate_elements[feedrate_being_setup].target    = current_block->final_rate;
+	} else {
+		// and in case there wasn't a deceleration phase, we'll do the same for whichever phase was last...
+		feedrate_elements[feedrate_being_setup-1].steps     = INT32_MAX;
+		// We don't setup anything else because we limit to the target speed anyway.
+	}
+	
+	if (feedrate == 0) {
+		is_running = false;
+		return false;
+	}
+	
+	prepareFeedrateIntervals();
+	recalcFeedrate();
+	acceleration_tick_counter = TICKS_PER_ACCELERATION;
+	
+	timer_counter = feedrate_inverted;
+
+	intervals = max_delta;
+	intervals_remaining = intervals; //block->total_intervals;
+	const int32_t negative_half_interval = -(intervals>>1);
+	for (int i = 0; i < STEPPER_COUNT; i++) {
 		axes[i].counter = negative_half_interval;
 	}
 	is_running = true;
+	
+	return true;
 }
 
-void setTargetNew(const Point& target, int32_t us, uint8_t relative) {
-	for (int i = 0; i < AXIS_COUNT; i++) {
-		int32_t move = target[i];
-
-		bool relative_move = (relative & (1 << i)) != 0;
-		/// if x, y, or z axis, add the toolhead offset to all movement
-		if(!relative_move){
-			axes[i].setTarget(target[i] + tool_offsets[i], false);}
-		else{
-			axes[i].setTarget(target[i], relative_move);}
-		// Only shut z axis on inactivity
-		const int32_t delta = axes[i].delta;
-		if (i == 2 && !holdZ) {
-			axes[i].enableStepper(delta != 0);
-		} else if (delta != 0) {
-			axes[i].enableStepper(true);
-		}
-	}
-	// compute number of intervals for this move
-	intervals = us / INTERVAL_IN_MICROSECONDS;
-	intervals_remaining = intervals;
-	const int32_t negative_half_interval = -intervals / 2;
-	for (int i = 0; i < AXIS_COUNT; i++) {
-		axes[i].counter = negative_half_interval;
-	}
-	is_running = true;
-}
 
 /// Start homing
 void startHoming(const bool maximums, const uint8_t axes_enabled, const uint32_t us_per_step) {
@@ -192,17 +289,72 @@ void setAxisPotValue(uint8_t index, uint8_t value){
 	}
 }
 
+void startRunning() {
+	if (is_running)
+		return;
+	// is_running = true;
+	getNextMove();
+}
+
+
 bool doInterrupt() {
 	if (is_running) {
-		if (intervals_remaining-- == 0) {
-			is_running = false;
-		} else {
-			for (int i = 0; i < STEPPER_COUNT; i++) {
-				   bool not_at_end = axes[i].doInterrupt(intervals);
-				//   is_running = is_running & not_at_end;
+        
+		timer_counter -= INTERVAL_IN_MICROSECONDS;
 
+		if (timer_counter <= 0) {
+			if ((intervals_remaining -= feedrate_multiplier) <= 0) {
+				getNextMove();
+                //DEBUG_PIN1.setValue(false);
+				return is_running;
+				// is_running = false;
+			} else {
+				
+				// if we are supposed to step too fast, we simulate double-size microsteps
+				feedrate_multiplier = 1;
+				while (timer_counter <= -feedrate_inverted && intervals_remaining > feedrate_multiplier) {
+					feedrate_multiplier++;
+					timer_counter += feedrate_inverted;
+				}
+				DEBUG_PIN1.setValue(true);
+				const int32_t temp_feedrate = feedrate_multiplier;
+				for (int i = 0; i < STEPPER_COUNT; i++) {
+					for(int n = 0; n < feedrate_multiplier; n++){
+						axes[i].doInterrupt(intervals);//, temp_feedrate);//intervals, temp_feedrate);
+					}
+				}
+				DEBUG_PIN1.setValue(false);
+				
+				if ((feedrate_steps_remaining-=feedrate_multiplier) <= 0) {
+					current_feedrate_index++;
+					prepareFeedrateIntervals();
+				}
+				
+				if (feedrate_dirty) {
+					recalcFeedrate();
+				}
+				
+				timer_counter += feedrate_inverted;
 			}
 		}
+		
+		if (feedrate_changerate != 0 ){//&& acceleration_tick_counter-- <= 0) {
+			///acceleration_tick_counter = TICKS_PER_ACCELERATION;
+			// Change our feedrate. Here it's important to note that we can over/undershoot
+
+			feedrate += feedrate_changerate;
+			feedrate_dirty = 1;
+		
+			if ((feedrate_changerate > 0 && feedrate > feedrate_target)
+			    || (feedrate_changerate < 0 && feedrate < feedrate_target)) {
+				feedrate_changerate = 0;
+				feedrate = feedrate_target;
+			} 
+		}
+
+		
+        
+        
 		return is_running;
 	} else if (is_homing) {
 		is_homing = false;
@@ -210,6 +362,9 @@ bool doInterrupt() {
 			bool still_homing = axes[i].doHoming(intervals);
 			is_homing = still_homing || is_homing;
 		}
+		// if we're done, force a sync with the planner
+		if (!is_homing)
+			planner::abort();
 		return is_homing;
 	}
 	return false;

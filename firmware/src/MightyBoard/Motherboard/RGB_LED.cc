@@ -187,7 +187,7 @@ void setDefaultColor(){
 			setBrightness(1, 200, LED_BLUE | LED_RED);
 			break;
 		 case LED_DEFAULT_CUSTOM:
-			setColor(CustomColor >> 24, CustomColor >> 16, CustomColor >> 8, true);
+			setColor(CustomColor >> 24, CustomColor >> 16, CustomColor >> 8);
 			break;
 	 }
 }
@@ -201,17 +201,15 @@ void setLEDBlink(uint8_t rate){
     // set LED color and store to EEPROM "custom" color area
 void setCustomColor(uint8_t red, uint8_t green, uint8_t blue){
 	eeprom::setCustomColor(red, green, blue);
-	setColor(red, green, blue, true);
+	setColor(red, green, blue);
 }
 
 #define abs(X) ((X) < 0 ? -(X) : (X)) 
 
 // wiggly: set a three value color using a 2 value driver (+ ON/OFF channel)
-void setColor(uint8_t red, uint8_t green, uint8_t blue, bool clearOld){
+void setColor(uint8_t red, uint8_t green, uint8_t blue){
 
-	if(clearOld){
-		clear();}
-	
+	clear();
 	int on, count;
 	on = count = 0;
     uint8_t leds_on;

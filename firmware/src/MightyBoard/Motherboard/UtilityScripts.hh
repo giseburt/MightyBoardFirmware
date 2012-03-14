@@ -25,7 +25,6 @@ namespace utility {
 	enum ScriptName{
 		HOME_AXES = 0,
 	LEVEL_PLATE_STARTUP = 1,
-	TOOLHEAD_CALIBRATE = 2,
 	LEVEL_PLATE_SECOND
 	};
 	

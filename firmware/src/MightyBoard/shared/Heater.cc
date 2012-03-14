@@ -78,7 +78,6 @@ void Heater::reset() {
 	heatingUpTimer = Timeout();
 	heatProgressTimer = Timeout();
 	progressChecked = false;
-	newTargetReached = false;
 
 	float p = eeprom::getEepromFixed16(eeprom_base+pid_eeprom_offsets::P_TERM_OFFSET,DEFAULT_P);
 	float i = eeprom::getEepromFixed16(eeprom_base+pid_eeprom_offsets::I_TERM_OFFSET,DEFAULT_I);
@@ -112,10 +111,9 @@ void Heater::set_target_temperature(int temp)
 		temp = MAX_VALID_TEMP;
 	}
 	
-	newTargetReached = false;
-	
 	if(heat_timing_check){
-		startTemp = current_temperature;	
+		startTemp = current_temperature;
+		newTargetReached = false;
 		progressChecked = false;
 		value_fail_count = 0;
 	

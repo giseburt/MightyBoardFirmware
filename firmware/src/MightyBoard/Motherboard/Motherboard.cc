@@ -22,6 +22,7 @@
 #include "Motherboard.hh"
 #include "Configuration.hh"
 #include "Steppers.hh"
+#include "Planner.hh"
 #include "Command.hh"
 #include "Interface.hh"
 #include "Commands.hh"
@@ -111,7 +112,7 @@ void Motherboard::reset(bool hard_reset) {
 
 	// Init steppers
 	uint8_t axis_invert = eeprom::getEeprom8(eeprom_offsets::AXIS_INVERSION, 0);
-    SoftI2cManager::getI2cManager().init();
+	SoftI2cManager::getI2cManager().init();
 	// Z holding indicates that when the Z axis is not in
 	// motion, the machine should continue to power the stepper
 	// coil to ensure that the Z stage does not shift.
@@ -125,17 +126,55 @@ void Motherboard::reset(bool hard_reset) {
 	for (int i = 0; i < STEPPER_COUNT; i++) {
 		stepper[i].init(i);
 	}
+
+	// Defaults are for the Replicator -Rob
+	//X 94.1397046
+	planner::setAxisStepsPerMM(94.139704, 0);
+	//Y 94.1397046             
+	planner::setAxisStepsPerMM( 94.139704, 1);
+	//Z 2560.0                 
+	planner::setAxisStepsPerMM(400.0, 2);
+	//A 100.470957613814818    
+	planner::setAxisStepsPerMM(96.2752018, 3);
+	//B 100.470957613814818    
+	planner::setAxisStepsPerMM(96.2752018, 4);
+
+
+	// Master acceleraion
+	planner::setAcceleration( DEFAULT_ACCELERATION);
+
+
+	//X -- default conservative
+	planner::setAxisAcceleration(DEFAULT_X_ACCELERATION, 0);
+	//Y -- default conservative            
+	planner::setAxisAcceleration(DEFAULT_Y_ACCELERATION, 1);
+	//Z -- default conservative            
+	planner::setAxisAcceleration(DEFAULT_Z_ACCELERATION, 2);
+	//A -- default conservative            
+	planner::setAxisAcceleration(DEFAULT_A_ACCELERATION, 3);
+	//B -- default conservative            
+	planner::setAxisAcceleration(DEFAULT_B_ACCELERATION, 4);
+
+
+#ifdef CENTREPEDAL
+	// uses the same eeprom address as the X/Y junction jerk~
+	planner::setJunctionDeviation(DEFAULT_JUNCTION_DEVIATION);
+#else
+	planner::setMaxXYJerk(DEFAULT_MAX_XY_JERK);
+#endif
+	planner::setMaxAxisJerk(DEFAULT_MAX_Z_JERK, 2);
+	planner::setMaxAxisJerk(DEFAULT_MAX_A_JERK, 3);
+	planner::setMaxAxisJerk(DEFAULT_MAX_B_JERK, 4);
+
+	planner::setMinimumPlannerSpeed(DEFAULT_MINIMUM_PLANNER_SPEED);
+
 	// Initialize the host and slave UARTs
-        UART::getHostUART().enable(true);
-        UART::getHostUART().in.reset();
-    
-    // initialize the extruders
-    Extruder_One.reset();
-    Extruder_Two.reset();
-    
-    Extruder_One.getExtruderHeater().set_target_temperature(0);
-	Extruder_Two.getExtruderHeater().set_target_temperature(0);
-	platform_heater.set_target_temperature(0);
+	UART::getHostUART().enable(true);
+	UART::getHostUART().in.reset();
+
+// initialize the extruders
+	Extruder_One.reset();
+	Extruder_Two.reset();
 		
 	// Reset and configure timer 0, the piezo buzzer timer
 	// Mode: Phase-correct PWM with OCRnA (WGM2:0 = 101)
@@ -261,7 +300,7 @@ void Motherboard::doInterrupt() {
     // if cutoff trigger line is high
 	if(cutoff.isCutoffActive())
 	{
-        // call noise response routine.  This will return true   if the 
+        // call noise response routine.  This will return true if the 
         // cutoff trigger is persistent and not a spike
 		if(!cutoff.noiseResponse()){
 			heatShutdown = true;
@@ -360,7 +399,7 @@ void Motherboard::runMotherboardSlice() {
 				interfaceBoard.errorMessage("Heaters shutdown    due to inactivity");//37
 				startButtonWait();
                 // turn LEDs blue
-				RGB_LED::setColor(0,0,255, true);
+				RGB_LED::setColor(0,0,255);
 		}
         // set tempertures to 0
 		Extruder_One.getExtruderHeater().set_target_temperature(0);
@@ -369,7 +408,7 @@ void Motherboard::runMotherboardSlice() {
 	}
 	
     // respond to heatshutdown.  response only needs to be called once
-	if(heatShutdown && !triggered && !Piezo::isPlaying())
+	if(heatShutdown && !triggered)
 	{
         triggered = true;
 		// rgb led response
@@ -394,18 +433,18 @@ void Motherboard::runMotherboardSlice() {
 				break;
 			case HEATER_FAIL_NOT_PLUGGED_IN:
 				interfaceBoard.errorMessage("Heater Error!       My temperature reads are failing! PleaseCheck my connections");//,79);
-                startButtonWait();
-                heatShutdown = false;
-                return;
+				startButtonWait();
+				heatShutdown = false;
+				return;
 		}
         // blink LEDS red
 		RGB_LED::errorSequence();
 		// disable command processing and steppers
 		host::heatShutdown();
 		command::heatShutdown();
-        interfaceBoard.lock();
-		steppers::abort();
-        for(int i = 0; i < STEPPER_COUNT; i++)
+		interfaceBoard.lock();
+		planner::abort();
+		for(int i = 0; i < STEPPER_COUNT; i++)
 			steppers::enableAxis(i, false);
 	}
 		       
@@ -559,10 +598,9 @@ void Motherboard::setUsingPlatform(bool is_using) {
 
 void Motherboard::setValve(bool on) {
   	ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
-		//setUsingPlatform(false);
-		//pwmHBP_On(false);
-		EXTRA_FET.setDirection(true);
-		EXTRA_FET.setValue(on);
+		setUsingPlatform(false);
+		pwmHBP_On(false);
+		HBP_HEAT.setValue(on);
 	}
 }
 

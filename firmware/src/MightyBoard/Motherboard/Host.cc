@@ -20,6 +20,7 @@
 #include <string.h>
 #include "Commands.hh"
 #include "Steppers.hh"
+#include "Planner.hh"
 #include "DebugPacketProcessor.hh"
 #include "Timeout.hh"
 #include "Version.hh"
@@ -88,10 +89,8 @@ void runHostSlice() {
 		
 		do_host_reset = false;
 
-
-		// reset local board
+        // reset local board
 		reset(hard_reset);
-		
         // hard_reset can be called, but is not called by any
         // a hard reset calls the start up sound and resets heater errors
 		hard_reset = false;
@@ -126,13 +125,13 @@ void runHostSlice() {
 	if (in.isFinished()) {
 		packet_in_timeout.abort();
 		out.reset();
-	  // do not respond to commands if the bot has had a heater failure
-		if(currentState == HOST_STATE_HEAT_SHUTDOWN){
-			out.append8(RC_CMD_UNSUPPORTED);
-		}else if(cancelBuild){
+		if(cancelBuild){
 			out.append8(RC_CANCEL_BUILD);
 			cancelBuild = false;
 			Motherboard::getBoard().indicateError(6);
+        // do not respond to commands if the bot has had a heater failure
+		} else if (currentState == HOST_STATE_HEAT_SHUTDOWN){
+			out.append8(RC_CMD_UNSUPPORTED);
 		} else
 #if defined(HONOR_DEBUG_PACKETS) && (HONOR_DEBUG_PACKETS == 1)
 		if (processDebugPacket(in, out)) {
@@ -159,9 +158,8 @@ void runHostSlice() {
     // mark new state as ready if done buiding onboard script
 	if((currentState==HOST_STATE_BUILDING_ONBOARD))
 	{
-		if(!utility::isPlaying()){
+		if(!utility::isPlaying())
 			currentState = HOST_STATE_READY;
-		}
 	}
 }
 
@@ -394,7 +392,7 @@ enum { // bit assignments
 inline void handleExtendedStop(const InPacket& from_host, OutPacket& to_host) {
 	uint8_t flags = from_host.read8(1);
 	if (flags & _BV(ES_STEPPERS)) {
-		steppers::abort();
+		planner::abort();
 	}
 	if (flags & _BV(ES_COMMANDS)) {
 		command::reset();
@@ -571,11 +569,14 @@ sdcard::SdErrorCode startBuildFromSD() {
     // start build from utility script
 void startOnboardBuild(uint8_t  build){
 	
-	if(utility::startPlayback(build)){
+	if(utility::startPlayback(build))
 		currentState = HOST_STATE_BUILDING_ONBOARD;
-	}
 	command::reset();
-	steppers::abort();
+	planner::abort();
+	
+	// Whuh?
+	steppers::init(Motherboard::getBoard());
+	planner::init();
 }
 
 // Stop the current build, if any
