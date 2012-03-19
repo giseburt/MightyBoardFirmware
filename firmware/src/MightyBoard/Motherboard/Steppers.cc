@@ -293,13 +293,13 @@ void startRunning() {
 
 bool doInterrupt() {
 	if (is_running) {
-     //   DEBUG_PIN1.setValue(true);
+        DEBUG_PIN1.setValue(true);
 		timer_counter -= INTERVAL_IN_MICROSECONDS;
 
 		if (timer_counter <= 0) {
 			if ((intervals_remaining -= feedrate_multiplier) <= 0) {
 				getNextMove();
-        //        DEBUG_PIN1.setValue(false);
+                DEBUG_PIN1.setValue(false);
 				return is_running;
 				// is_running = false;
 			} else {
@@ -349,7 +349,7 @@ bool doInterrupt() {
 
 		
         
-   //     DEBUG_PIN1.setValue(false);
+        DEBUG_PIN1.setValue(false);
 		return is_running;
 	} else if (is_homing) {
 		is_homing = false;

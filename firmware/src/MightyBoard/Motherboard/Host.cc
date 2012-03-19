@@ -20,7 +20,6 @@
 #include <string.h>
 #include "Commands.hh"
 #include "Steppers.hh"
-#include "Planner.hh"
 #include "DebugPacketProcessor.hh"
 #include "Timeout.hh"
 #include "Version.hh"
@@ -34,6 +33,7 @@
 #include "Eeprom.hh"
 #include "EepromMap.hh"
 #include "UtilityScripts.hh"
+#include "Planner.hh"
 
 namespace host {
 
@@ -49,7 +49,7 @@ bool processExtruderQueryPacket(const InPacket& from_host, OutPacket& to_host);
 Timeout packet_in_timeout;
 Timeout cancel_timeout;
 
-#define HOST_PACKET_TIMEOUT_MS 200
+#define HOST_PACKET_TIMEOUT_MS 20
 #define HOST_PACKET_TIMEOUT_MICROS (1000L*HOST_PACKET_TIMEOUT_MS)
 
 //#define HOST_TOOL_RESPONSE_TIMEOUT_MS 50
@@ -89,8 +89,10 @@ void runHostSlice() {
 		
 		do_host_reset = false;
 
-        // reset local board
+
+		// reset local board
 		reset(hard_reset);
+		
         // hard_reset can be called, but is not called by any
         // a hard reset calls the start up sound and resets heater errors
 		hard_reset = false;
@@ -125,13 +127,13 @@ void runHostSlice() {
 	if (in.isFinished()) {
 		packet_in_timeout.abort();
 		out.reset();
-		if(cancelBuild){
+	  // do not respond to commands if the bot has had a heater failure
+		if(currentState == HOST_STATE_HEAT_SHUTDOWN){
+			out.append8(RC_CMD_UNSUPPORTED);
+		}else if(cancelBuild){
 			out.append8(RC_CANCEL_BUILD);
 			cancelBuild = false;
 			Motherboard::getBoard().indicateError(6);
-        // do not respond to commands if the bot has had a heater failure
-		} else if (currentState == HOST_STATE_HEAT_SHUTDOWN){
-			out.append8(RC_CMD_UNSUPPORTED);
 		} else
 #if defined(HONOR_DEBUG_PACKETS) && (HONOR_DEBUG_PACKETS == 1)
 		if (processDebugPacket(in, out)) {
@@ -158,8 +160,9 @@ void runHostSlice() {
     // mark new state as ready if done buiding onboard script
 	if((currentState==HOST_STATE_BUILDING_ONBOARD))
 	{
-		if(!utility::isPlaying())
+		if(!utility::isPlaying()){
 			currentState = HOST_STATE_READY;
+		}
 	}
 }
 
@@ -243,7 +246,7 @@ inline void handleGetBufferSize(const InPacket& from_host, OutPacket& to_host) {
 
 inline void handleGetPosition(const InPacket& from_host, OutPacket& to_host) {
 	ATOMIC_BLOCK(ATOMIC_FORCEON) {
-		const Point p = steppers::getPosition();
+		const Point p = planner::getPosition();
 		to_host.append8(RC_OK);
 		to_host.append32(p[0]);
 		to_host.append32(p[1]);
@@ -263,7 +266,7 @@ inline void handleGetPosition(const InPacket& from_host, OutPacket& to_host) {
 
 inline void handleGetPositionExt(const InPacket& from_host, OutPacket& to_host) {
 	ATOMIC_BLOCK(ATOMIC_FORCEON) {
-		const Point p = steppers::getPosition();
+		const Point p = planner::getPosition();
 		to_host.append8(RC_OK);
 		to_host.append32(p[0]);
 		to_host.append32(p[1]);
@@ -569,14 +572,11 @@ sdcard::SdErrorCode startBuildFromSD() {
     // start build from utility script
 void startOnboardBuild(uint8_t  build){
 	
-	if(utility::startPlayback(build))
+	if(utility::startPlayback(build)){
 		currentState = HOST_STATE_BUILDING_ONBOARD;
+	}
 	command::reset();
 	planner::abort();
-	
-	// Whuh?
-	steppers::init(Motherboard::getBoard());
-	planner::init();
 }
 
 // Stop the current build, if any

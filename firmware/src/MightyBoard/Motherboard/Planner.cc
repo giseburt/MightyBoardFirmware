@@ -264,9 +264,49 @@ namespace planner {
 	volatile bool is_planning_and_using_prev_speed = false;
 	
 	void init()
-	{
-		abort();
+	{	
+			// Defaults are for the Replicator -Rob
+		//X 94.1397046
+		planner::setAxisStepsPerMM(94.139704, 0);
+		//Y 94.1397046             
+		planner::setAxisStepsPerMM( 94.139704, 1);
+		//Z 2560.0                 
+		planner::setAxisStepsPerMM(400.0, 2);
+		//A 100.470957613814818    
+		planner::setAxisStepsPerMM(96.2752018, 3);
+		//B 100.470957613814818    
+		planner::setAxisStepsPerMM(96.2752018, 4);
 
+
+		// Master acceleraion
+		planner::setAcceleration( DEFAULT_ACCELERATION);
+
+
+		//X -- default conservative
+		planner::setAxisAcceleration(DEFAULT_X_ACCELERATION, 0);
+		//Y -- default conservative            
+		planner::setAxisAcceleration(DEFAULT_Y_ACCELERATION, 1);
+		//Z -- default conservative            
+		planner::setAxisAcceleration(DEFAULT_Z_ACCELERATION, 2);
+		//A -- default conservative            
+		planner::setAxisAcceleration(DEFAULT_A_ACCELERATION, 3);
+		//B -- default conservative            
+		planner::setAxisAcceleration(DEFAULT_B_ACCELERATION, 4);
+
+
+	#ifdef CENTREPEDAL
+		// uses the same eeprom address as the X/Y junction jerk~
+		planner::setJunctionDeviation(DEFAULT_JUNCTION_DEVIATION);
+	#else
+		planner::setMaxXYJerk(DEFAULT_MAX_XY_JERK);
+	#endif
+		planner::setMaxAxisJerk(DEFAULT_MAX_Z_JERK, 2);
+		planner::setMaxAxisJerk(DEFAULT_MAX_A_JERK, 3);
+		planner::setMaxAxisJerk(DEFAULT_MAX_B_JERK, 4);
+
+		planner::setMinimumPlannerSpeed(DEFAULT_MINIMUM_PLANNER_SPEED);
+
+		abort();
 
 #ifdef CENTREPEDAL
 		previous_unit_vec[0]= 0.0;
@@ -921,9 +961,9 @@ namespace planner {
 			
 		planner_move_t *move = planner_buffer.getTail();
 		planner_buffer.bumpTail();
-		DEBUG_PIN1.setValue(true);
+		//DEBUG_PIN1.setValue(true);
 		planNextMove(move->target, move->us_per_step, move->steps);
-		DEBUG_PIN1.setValue(false);
+		//DEBUG_PIN1.setValue(false);
 	}
 
 	void startHoming(const bool maximums,
