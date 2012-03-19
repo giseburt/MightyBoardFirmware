@@ -12,14 +12,14 @@ class StepperAxis
 {
 public:
         StepperInterface* interface;    ///< Interface this axis is connected to
-        volatile int16_t position;      ///< Current position of this axis, in steps
+        volatile int32_t position;      ///< Current position of this axis, in steps
         int32_t minimum;                ///< Minimum position, in steps
         int32_t maximum;                ///< Maximum position, in steps
         volatile int32_t target;        ///< Target position, in steps
-        volatile int16_t counter;       ///< Step counter; represents the proportion of
+        volatile int32_t counter;       ///< Step counter; represents the proportion of
                                         ///< a step so far passed.  When the counter hits
                                         ///< zero, a step is taken.
-        volatile int16_t delta;         ///< Amount to increment counter per tick
+        volatile int32_t delta;         ///< Amount to increment counter per tick
         volatile bool direction;        ///< True for positive, false for negative
 //        volatile int8_t  step_multiplier;    ///< Used to simulate dynamic microstep switching, must be > 0 and 2^N
         volatile int8_t  step_change;        ///< Uses internally. step_change = direction ? step_multiplier : -step_multiplier;
@@ -85,7 +85,7 @@ public:
         /// Handle interrupt for the given axis.
         /// \param[in] intervals Intervals that have passed since the previous interrupt
    //     bool doInterrupt(const int32_t intervals, const int32_t &step_multiplier);
-		bool doInterrupt(const int16_t intervals);
+		bool doInterrupt(const int32_t intervals, const int8_t &step_multiplier);
 
         /// Run the next step of the homing procedure.
         /// \param[in] intervals Intervals that have passed since the previous interrupt

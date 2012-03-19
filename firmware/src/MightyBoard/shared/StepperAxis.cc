@@ -114,6 +114,45 @@ bool StepperAxis::checkEndstop(const bool isHoming) {
 #endif
 }
 
+bool StepperAxis::doInterrupt(const int32_t intervals, const int8_t &step_multiplier) {
+	
+	if(delta == 0)
+		return false;
+	
+	bool hit_endstop = checkEndstop(false);
+	
+//	int32_t counter_local = counter;
+//	int32_t position_local = position;
+//	const int8_t step_change_local = step_change;
+//	const int32_t delta_local = delta;
+//	const int32_t intervals_local = intervals;
+	
+	if(!hit_endstop){
+		for(int8_t steps = step_multiplier; steps > 0; steps--){
+			counter += delta;
+			if(counter >= 0){
+				interface->step(true);
+				counter -= intervals;
+				position += step_change;
+				interface->step(false);
+			}
+		}
+	}else{
+		for(int8_t steps = step_multiplier; steps > 0; steps--){
+			counter += delta;
+			if(counter >= 0){
+				counter -= intervals;
+				position += step_change;
+			}
+		}
+	}
+
+	// push the possibly-changed locals back out
+//	counter = counter_local;
+//	position = position_local;
+	return !hit_endstop;
+}
+
 /*bool StepperAxis::doInterrupt(const int32_t intervals, const int32_t &step_multiplier) {
 	bool hit_endstop = checkEndstop(false);
 	bool hit_softEnd = false;
@@ -149,7 +188,7 @@ bool StepperAxis::checkEndstop(const bool isHoming) {
 	position = position_local;
 	return !hit_endstop;
 }
- */
+ 
 bool StepperAxis::doInterrupt(const int16_t intervals) {
 	
 	if(delta == 0)
@@ -181,7 +220,7 @@ bool StepperAxis::doInterrupt(const int16_t intervals) {
         
         return !hit_endstop;
 }
-
+*/
 bool StepperAxis::doHoming(const int32_t intervals) {
         if (delta == 0) return false;
         counter += delta;

@@ -35,19 +35,18 @@ static const int16_t * rate_table_mid2 = ifeedrate_table + 480;
 static const int16_t * rate_table_fast = ifeedrate_table + 720;
 
 struct feedrate_element {
-	uint32_t rate; // interval value of the feedrate axis
+	uint16_t rate; // interval value of the feedrate axis
 	uint32_t steps;     // number of steps of the master axis to change
-	uint32_t target;
+	uint16_t target;
 };
 feedrate_element feedrate_elements[3];
 volatile int32_t feedrate_steps_remaining;
-volatile int32_t feedrate;
-volatile int32_t feedrate_target; // convenient storage to save lookup time
+volatile int16_t feedrate;
+volatile int16_t feedrate_target; // convenient storage to save lookup time
 volatile int8_t  feedrate_dirty; // indicates if the feedrate_inverted needs recalculated
-volatile int32_t feedrate_inverted;
-volatile int32_t feedrate_changerate;
-volatile int32_t acceleration_tick_counter;
-volatile int32_t feedrate_multiplier; // should always be  > 0
+volatile int16_t feedrate_inverted;
+volatile int16_t feedrate_changerate;
+volatile int8_t feedrate_multiplier; // should always be  > 0
 volatile uint8_t current_feedrate_index;
 
 volatile int32_t timer_counter;
@@ -86,7 +85,6 @@ void init(Motherboard& motherboard) {
 	feedrate_inverted = 0;
 	feedrate_dirty = 1;
         feedrate_multiplier = 1;
-	acceleration_tick_counter = 0;
 	current_feedrate_index = 0;
 }
 
@@ -99,8 +97,7 @@ void abort() {
 	feedrate = 0;
 	feedrate_inverted = 0;
 	feedrate_dirty = 1;
-        feedrate_multiplier = 1;
-	acceleration_tick_counter = 0;
+    feedrate_multiplier = 1;
 	current_feedrate_index = 0;
 }
 
@@ -133,11 +130,11 @@ inline void prepareFeedrateIntervals() {
 }
 
 inline void recalcFeedrate() {
-//	if (feedrate == 0)
-//		return; // SHRIEK!
-//	feedrate_inverted = 1000000/feedrate;
+	if (feedrate < 32)
+		return; 
+	feedrate_inverted = 1000000/feedrate;
 	
-	if(feedrate  >= 4096)
+/*	if(feedrate  >= 4096)
 		feedrate_inverted = pgm_read_word(&rate_table_fast[feedrate >> 8]);
 	else if (feedrate >= 1024)
 		feedrate_inverted = pgm_read_word(&rate_table_mid1[feedrate >> 4]);
@@ -145,7 +142,7 @@ inline void recalcFeedrate() {
 		feedrate_inverted = pgm_read_word(&rate_table_mid2[feedrate >> 2]);
 	else
 		feedrate_inverted = pgm_read_word(&rate_table_slow[feedrate]);
-
+*/
 	feedrate_dirty = 0;
 }
 
@@ -160,9 +157,8 @@ uint32_t getCurrentFeedrate() {
 }
 
 // load up the next movment
-// WARNING: called from inside the ISR, so get out fast
 bool getNextMove() {
-	is_running = false; // this ensures that the interrupt does not .. interrupt us
+	is_running = false; // this ensures that the interrupt is not called when a move is being set up
 
 	if (current_block != NULL) {
 		current_block->flags &= ~planner::Block::Busy;
@@ -242,9 +238,7 @@ bool getNextMove() {
 	}
 	
 	prepareFeedrateIntervals();
-	recalcFeedrate();
-	acceleration_tick_counter = TICKS_PER_ACCELERATION;
-	
+	recalcFeedrate();	
 	timer_counter = feedrate_inverted;
 
 	intervals = max_delta;
@@ -299,13 +293,13 @@ void startRunning() {
 
 bool doInterrupt() {
 	if (is_running) {
-        
+     //   DEBUG_PIN1.setValue(true);
 		timer_counter -= INTERVAL_IN_MICROSECONDS;
 
 		if (timer_counter <= 0) {
 			if ((intervals_remaining -= feedrate_multiplier) <= 0) {
 				getNextMove();
-                //DEBUG_PIN1.setValue(false);
+        //        DEBUG_PIN1.setValue(false);
 				return is_running;
 				// is_running = false;
 			} else {
@@ -316,14 +310,15 @@ bool doInterrupt() {
 					feedrate_multiplier++;
 					timer_counter += feedrate_inverted;
 				}
-				DEBUG_PIN1.setValue(true);
-				const int32_t temp_feedrate = feedrate_multiplier;
+				
+				const int8_t temp_feedrate = feedrate_multiplier;
 				for (int i = 0; i < STEPPER_COUNT; i++) {
-					for(int n = 0; n < feedrate_multiplier; n++){
-						axes[i].doInterrupt(intervals);//, temp_feedrate);//intervals, temp_feedrate);
-					}
+					//for(int n = 0; n < feedrate_multiplier; n++){
+					//	axes[i].doInterrupt(intervals);//, temp_feedrate);//intervals, temp_feedrate);
+					//}
+					axes[i].doInterrupt(intervals, temp_feedrate);
 				}
-				DEBUG_PIN1.setValue(false);
+				
 				
 				if ((feedrate_steps_remaining-=feedrate_multiplier) <= 0) {
 					current_feedrate_index++;
@@ -354,7 +349,7 @@ bool doInterrupt() {
 
 		
         
-        
+   //     DEBUG_PIN1.setValue(false);
 		return is_running;
 	} else if (is_homing) {
 		is_homing = false;

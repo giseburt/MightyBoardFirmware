@@ -77,6 +77,14 @@ namespace planner {
 	// functions
 		void calculate_trapezoid(float exit_factor_speed);
 	};
+	class planner_move_t {
+		public:
+			Point target;
+			uint32_t us_per_step;
+			Point steps;
+		
+			planner_move_t() : target() {};
+	};
 
 	/// Initilaize the planner data structures
 	void init();
@@ -139,6 +147,9 @@ namespace planner {
 	void doneWithNextBlock();
 	
 	void markLastMoveCommand();
+	
+	void runStepperPlannerSlice();
+	bool planNextMove(const Point& target, int32_t us_per_step, Point& steps);
 }
 
 #endif /* end of include guard: PLANNER_HH */

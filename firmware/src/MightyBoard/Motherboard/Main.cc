@@ -90,7 +90,9 @@ int main() {
 		command::runCommandSlice();
 		// Motherboard slice
 		board.runMotherboardSlice();
-        // reset the watch dog timer
+		// acceleration planner slice    
+        planner::runStepperPlannerSlice();
+		// reset the watch dog timer
 		wdt_reset();
 		
 	}

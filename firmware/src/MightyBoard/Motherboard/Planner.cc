@@ -79,7 +79,10 @@
 #include "Point.hh"
 
 // Give the processor some time to breathe and plan...
-#define MIN_MS_PER_SEGMENT 12000
+#define MIN_MS_PER_SEGMENT 24000
+
+// size of command storage buffer
+#define PLANNER_BUFFER_SIZE 32
 
 #define X_AXIS 0
 #define Y_AXIS 1
@@ -254,6 +257,8 @@ namespace planner {
 	
 	Block block_buffer_data[BLOCK_BUFFER_SIZE];
 	ReusingCircularBufferTempl<Block> block_buffer(BLOCK_BUFFER_SIZE, block_buffer_data);
+	planner_move_t planner_buffer_data[PLANNER_BUFFER_SIZE];
+	ReusingCircularBufferTempl<planner_move_t> planner_buffer(PLANNER_BUFFER_SIZE, planner_buffer_data);
 	
 	// let's get verbose
 	volatile bool is_planning_and_using_prev_speed = false;
@@ -262,8 +267,6 @@ namespace planner {
 	{
 		abort();
 
-		// stepperTimingDebugPin.setDirection(true);
-		// stepperTimingDebugPin.setValue(false);
 
 #ifdef CENTREPEDAL
 		previous_unit_vec[0]= 0.0;
@@ -591,11 +594,13 @@ namespace planner {
 	}
 
 	bool isBufferFull() {
-		return block_buffer.isFull();
+		return planner_buffer.isFull(); 
+		//return block_buffer.isFull();
 	}
 	
 	bool isBufferEmpty() {
 		bool is_buffer_empty = block_buffer.isEmpty();
+
 		
 		// if we buffer underrun, we need to make sure the planner starts from "stopped"
 		if (is_buffer_empty && !is_planning_and_using_prev_speed) {
@@ -604,6 +609,7 @@ namespace planner {
 			}
 			previous_nominal_speed = 0.0;
 		}
+
 		return is_buffer_empty;
 	}
 	
@@ -617,6 +623,10 @@ namespace planner {
 	}
 	
 	bool addMoveToBufferRelative(const Point& move, const int32_t ms, const int8_t relative) {
+		
+		if(planner_buffer.isFull())
+			return false;
+		
 		Point target;
 		int32_t max_delta = 0;
 		for (int i = 0; i < STEPPER_COUNT; i++) {
@@ -633,21 +643,41 @@ namespace planner {
 				max_delta = delta;
 			}
 		}
-		
-		return addMoveToBuffer(target, ms/max_delta);
+		ATOMIC_BLOCK(ATOMIC_FORCEON){
+			planner_move_t *newMove = planner_buffer.getHead();
+			newMove->target = target; 
+			newMove->us_per_step = ms/max_delta;
+			newMove->steps = target-position;
+			planner_buffer.bumpHead();
+		}
+		position = target;
+		return true; 
+
 	}
 
 	
 	// Buffer the move. IOW, add a new block, and recalculate the acceleration accordingly
 	bool addMoveToBuffer(const Point& target, int32_t us_per_step)
 	{
-		// stepperTimingDebugPin.setValue(true);
-		if (block_buffer.isFull()) {
-			// stepperTimingDebugPin.setValue(true);
-			// stepperTimingDebugPin.setValue(false);
+		if(planner_buffer.isFull())
 			return false;
-			// stepperTimingDebugPin.setValue(false);
-		}	
+			
+		ATOMIC_BLOCK(ATOMIC_FORCEON){
+			planner_move_t *move = planner_buffer.getHead();
+			move->target = target; 
+			move->us_per_step = us_per_step;
+			move->steps = target - position;
+			planner_buffer.bumpHead();
+		}
+		position = target;
+		return true;
+	
+	}
+	bool planNextMove(const Point& target, int32_t us_per_step, Point& steps){
+		
+		if(block_buffer.isFull()){
+			return false;
+		}
 		
 		Block *block = block_buffer.getHead();
 		// Mark block as not busy (Not executed by the stepper interrupt)
@@ -656,7 +686,7 @@ namespace planner {
 		block->target = target;
 
 		// // store the absolute number of steps in each direction, without direction
-		Point steps = (target - position);
+		//Point steps = (target - position);
 
 		float delta_mm[STEPPER_COUNT];
 		block->millimeters = 0.0;
@@ -864,7 +894,7 @@ namespace planner {
 		is_planning_and_using_prev_speed = false;
 
 		// Update position
-		position = target;
+		//position = target;
 		
 		// Move buffer head
 		block_buffer.bumpHead();
@@ -877,6 +907,23 @@ namespace planner {
 		
 		// stepperTimingDebugPin.setValue(false);
 		return true;
+	}
+	
+	//bool toggle = true;
+	void runStepperPlannerSlice(){
+		
+		if(planner_buffer.isEmpty()){
+			return;	}
+		
+		if (block_buffer.isFull()){
+			return;	}
+
+			
+		planner_move_t *move = planner_buffer.getTail();
+		planner_buffer.bumpTail();
+		DEBUG_PIN1.setValue(true);
+		planNextMove(move->target, move->us_per_step, move->steps);
+		DEBUG_PIN1.setValue(false);
 	}
 
 	void startHoming(const bool maximums,
@@ -900,6 +947,7 @@ namespace planner {
 		previous_nominal_speed = 0.0;
 		
 		block_buffer.clear();
+		planner_buffer.clear();
 
 #ifdef CENTREPEDAL
 		previous_unit_vec[0]= 0.0;
