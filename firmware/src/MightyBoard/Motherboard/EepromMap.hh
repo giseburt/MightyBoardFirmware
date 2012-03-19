@@ -129,12 +129,18 @@ const static uint16_t FILAMENT_HELP_SETTINGS = 0x0160;
 /// This indicates how far out of tolerance the toolhead0 toolhead1 distance is
 /// in steps.  3 x 32 bits = 12 bytes
 const static uint16_t TOOLHEAD_OFFSET_SETTINGS = 0x0162;
-
+/// Acceleraton settings 1byte + 2 bytes
+const static uint16_t ACCELERATION_SETTINGS = 0x016E;
 
 /// start of free space
-const static uint16_t FREE_EEPROM_STARTS = 0x016D;
+const static uint16_t FREE_EEPROM_STARTS = 0x0172;
 
 
+}
+
+namespace acceleration_eeprom_offsets{
+	const static uint16_t ACTIVE_OFFSET	= 0x00;
+	const static uint16_t ACCELERATION_RATE_OFFSET = 0x02;
 }
 
 // buzz on/off settings

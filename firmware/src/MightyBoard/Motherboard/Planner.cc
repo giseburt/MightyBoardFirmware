@@ -77,6 +77,7 @@
 
 #include "Steppers.hh"
 #include "Point.hh"
+#include "Eeprom.hh"
 
 // Give the processor some time to breathe and plan...
 #define MIN_MS_PER_SEGMENT 24000
@@ -265,46 +266,36 @@ namespace planner {
 	
 	void init()
 	{	
-			// Defaults are for the Replicator -Rob
-		//X 94.1397046
-		planner::setAxisStepsPerMM(94.139704, 0);
-		//Y 94.1397046             
-		planner::setAxisStepsPerMM( 94.139704, 1);
-		//Z 2560.0                 
-		planner::setAxisStepsPerMM(400.0, 2);
-		//A 100.470957613814818    
-		planner::setAxisStepsPerMM(96.2752018, 3);
-		//B 100.470957613814818    
-		planner::setAxisStepsPerMM(96.2752018, 4);
+		// set steps per mm for the replicator
+		setAxisStepsPerMM(XSTEPS_PER_MM, X_AXIS);         
+		setAxisStepsPerMM(YSTEPS_PER_MM, Y_AXIS);
+		setAxisStepsPerMM(ZSTEPS_PER_MM, Z_AXIS);
+		setAxisStepsPerMM(ASTEPS_PER_MM, A_AXIS);
+		setAxisStepsPerMM(BSTEPS_PER_MM, B_AXIS);
 
 
 		// Master acceleraion
-		planner::setAcceleration( DEFAULT_ACCELERATION);
+		setAcceleration(eeprom::getEeprom16(eeprom_offsets::ACCELERATION_SETTINGS + acceleration_eeprom_offsets::ACCELERATION_RATE_OFFSET, DEFAULT_ACCELERATION));
 
-
-		//X -- default conservative
-		planner::setAxisAcceleration(DEFAULT_X_ACCELERATION, 0);
-		//Y -- default conservative            
-		planner::setAxisAcceleration(DEFAULT_Y_ACCELERATION, 1);
-		//Z -- default conservative            
-		planner::setAxisAcceleration(DEFAULT_Z_ACCELERATION, 2);
-		//A -- default conservative            
-		planner::setAxisAcceleration(DEFAULT_A_ACCELERATION, 3);
-		//B -- default conservative            
-		planner::setAxisAcceleration(DEFAULT_B_ACCELERATION, 4);
+		// axes limits for acceleration
+		setAxisAcceleration(DEFAULT_X_ACCELERATION, X_AXIS);           
+		setAxisAcceleration(DEFAULT_Y_ACCELERATION, Y_AXIS);
+		setAxisAcceleration(DEFAULT_Z_ACCELERATION, Z_AXIS);
+		setAxisAcceleration(DEFAULT_A_ACCELERATION, A_AXIS);
+		setAxisAcceleration(DEFAULT_B_ACCELERATION, B_AXIS);
 
 
 	#ifdef CENTREPEDAL
 		// uses the same eeprom address as the X/Y junction jerk~
-		planner::setJunctionDeviation(DEFAULT_JUNCTION_DEVIATION);
+		setJunctionDeviation(DEFAULT_JUNCTION_DEVIATION);
 	#else
-		planner::setMaxXYJerk(DEFAULT_MAX_XY_JERK);
+		setMaxXYJerk(DEFAULT_MAX_XY_JERK);
 	#endif
-		planner::setMaxAxisJerk(DEFAULT_MAX_Z_JERK, 2);
-		planner::setMaxAxisJerk(DEFAULT_MAX_A_JERK, 3);
-		planner::setMaxAxisJerk(DEFAULT_MAX_B_JERK, 4);
+		setMaxAxisJerk(DEFAULT_MAX_Z_JERK, Z_AXIS);
+		setMaxAxisJerk(DEFAULT_MAX_A_JERK, A_AXIS);
+		setMaxAxisJerk(DEFAULT_MAX_B_JERK, B_AXIS);
 
-		planner::setMinimumPlannerSpeed(DEFAULT_MINIMUM_PLANNER_SPEED);
+		setMinimumPlannerSpeed(DEFAULT_MINIMUM_PLANNER_SPEED);
 
 		abort();
 
@@ -820,7 +811,7 @@ namespace planner {
 				block->acceleration_st = axes[i].max_acceleration;
 		}
 		block->acceleration = block->acceleration_st / steps_per_mm;
-		block->acceleration_rate = block->acceleration_st / ACCELERATION_TICKS_PER_SECOND;
+		block->acceleration_rate = block->acceleration_st * INTERVAL_IN_MICROSECONDS / 1000000;
 
 #ifndef CENTREPEDAL
 		// Compute the speed trasitions, or "jerks"

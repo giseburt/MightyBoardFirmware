@@ -179,6 +179,17 @@ void setDefaultsPreheat(uint16_t eeprom_base)
     eeprom_write_word((uint16_t*)(eeprom_base + preheat_eeprom_offsets::PREHEAT_PLATFORM_OFFSET), 100);
     eeprom_write_byte((uint8_t*)(eeprom_base + preheat_eeprom_offsets::PREHEAT_ON_OFF_OFFSET), (1<<HEAT_MASK_RIGHT) + (1<<HEAT_MASK_PLATFORM));
 }    
+
+/**
+ *
+ * @param eeprom_base start of acceleration settings table
+ */
+void setDefaultsAcceleration(uint16_t eeprom_base)
+{
+    eeprom_write_byte((uint8_t*)(eeprom_base + acceleration_eeprom_offsets::ACTIVE_OFFSET), 1);
+    eeprom_write_word((uint16_t*)(eeprom_base + acceleration_eeprom_offsets::ACCELERATION_RATE_OFFSET), 500);
+    
+}    
     
 
 /// Does a factory reset (resets all defaults except home/endstops, axis direction and tool count)
@@ -204,7 +215,7 @@ void factoryResetEEPROM() {
 		homes[0] = replicator_axis_offsets::SINGLE_X_OFFSET;
 	eeprom_write_block((uint8_t*)&(homes[0]),(uint8_t*)(eeprom_offsets::AXIS_HOME_POSITIONS), 20 );
 	
-	
+	setDefaultsAcceleration(eeprom_offsets::ACCELERATION_SETTINGS);
 	
 	eeprom_write_byte((uint8_t*)eeprom_offsets::FILAMENT_HELP_SETTINGS, 1);
 	
@@ -279,7 +290,7 @@ void storeToolheadToleranceDefaults(){
 void fullResetEEPROM() {
 	
 	// axis inversion settings
-	uint8_t axis_invert = 0b011<<2; // A,Z axis = 1
+	uint8_t axis_invert = 0b10111; // A axis not inverted
 	eeprom_write_byte((uint8_t*)eeprom_offsets::AXIS_INVERSION, axis_invert);
 	
 	// tool count settings

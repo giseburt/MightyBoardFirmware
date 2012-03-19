@@ -30,6 +30,32 @@
 #include <stdint.h>
 #include "Point.hh"
 
+// The number of movements we can plan ahead at a time
+// THIS MUST BE A POWER OF 2! 4, 8, 16, 32, you get the idea...
+#define BLOCK_BUFFER_SIZE 16
+
+#define DEFAULT_ACCELERATION 500.0 // mm/s/s
+#define DEFAULT_X_ACCELERATION 2000.0 // mm/s/s
+#define DEFAULT_Y_ACCELERATION 2000.0 // mm/s/s
+#define DEFAULT_Z_ACCELERATION 100.0 // mm/s/s
+#define DEFAULT_A_ACCELERATION 200.0 // mm/s/s
+#define DEFAULT_B_ACCELERATION 200.0 // mm/s/s
+
+#define DEFAULT_MAX_XY_JERK 8.0 // ms/s <-- unused if CENTREPEDAL is defined below
+#define DEFAULT_MAX_Z_JERK 8.0 // mm/s
+#define DEFAULT_MAX_A_JERK 10.0 // mm/s
+#define DEFAULT_MAX_B_JERK 10.0 // mm/s
+
+// Minimum planner junction speed. Sets the default minimum speed the planner plans for at the end
+// of the buffer and all stops. This should not be much greater than zero and should only be changed
+// if unwanted behavior is observed on a user's machine when running at very slow speeds.
+#define DEFAULT_MINIMUM_PLANNER_SPEED 1.0 // (mm/sec)
+
+//  define CENTREPEDAL to use centrepedal calucations -- so far I can't get there to work -Rob
+#undef CENTREPEDAL
+#define DEFAULT_JUNCTION_DEVIATION 0.05 // mm
+
+
 namespace planner {
 	// This struct is used when buffering the setup for each linear movement "nominal" values are as specified in 
 	// the source g-code and may never actually be reached if acceleration management is active.
