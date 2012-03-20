@@ -182,12 +182,13 @@ void setDefaultsPreheat(uint16_t eeprom_base)
 
 /**
  *
- * @param eeprom_base start of acceleration settings table
+ * break with the form here as eeprom_base is available in class and we
+ * want to cleanly call this function externally
  */
-void setDefaultsAcceleration(uint16_t eeprom_base)
+void setDefaultsAcceleration()
 {
-    eeprom_write_byte((uint8_t*)(eeprom_base + acceleration_eeprom_offsets::ACTIVE_OFFSET), 1);
-    eeprom_write_word((uint16_t*)(eeprom_base + acceleration_eeprom_offsets::ACCELERATION_RATE_OFFSET), 500);
+    eeprom_write_byte((uint8_t*)(eeprom_offsets::ACCELERATION_SETTINGS + acceleration_eeprom_offsets::ACTIVE_OFFSET), 1);
+    eeprom_write_word((uint16_t*)(eeprom_offsets::ACCELERATION_SETTINGS + acceleration_eeprom_offsets::ACCELERATION_RATE_OFFSET), 500);
     
 }    
     
@@ -215,7 +216,7 @@ void factoryResetEEPROM() {
 		homes[0] = replicator_axis_offsets::SINGLE_X_OFFSET;
 	eeprom_write_block((uint8_t*)&(homes[0]),(uint8_t*)(eeprom_offsets::AXIS_HOME_POSITIONS), 20 );
 	
-	setDefaultsAcceleration(eeprom_offsets::ACCELERATION_SETTINGS);
+	setDefaultsAcceleration();
 	
 	eeprom_write_byte((uint8_t*)eeprom_offsets::FILAMENT_HELP_SETTINGS, 1);
 	

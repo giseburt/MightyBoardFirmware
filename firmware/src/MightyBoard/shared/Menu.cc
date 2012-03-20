@@ -752,12 +752,14 @@ void FilamentScreen::startMotor(){
     Point target = Point(0,0,0, 0,0);
     target[axisID] = steps;
     
+    planner::setAccelerationOn(false);
     planner::addMoveToBufferRelative(target, interval, 0x1f);
+    planner::markLastMoveCommand();
     filamentTimer.clear();
     filamentTimer.start(300000000); //5 minutes
 }
 void FilamentScreen::stopMotor(){
-    
+
     planner::abort();
     for(int i = 0; i < STEPPER_COUNT; i++)
         steppers::enableAxis(i, false);
@@ -1506,8 +1508,8 @@ void JogMode::update(LiquidCrystalSerial& lcd, bool forceRedraw) {
 }
 
 void JogMode::jog(ButtonArray::ButtonName direction) {
-	Point position = steppers::getPosition();
-	planner::abort();
+	Point position = planner::getPosition();
+	//planner::abort();
 
 	int32_t interval = 1000;
 	int32_t steps;
@@ -1517,7 +1519,7 @@ void JogMode::jog(ButtonArray::ButtonName direction) {
 		steps = 20;
 		break;
 	case DISTANCE_LONG:
-		steps = 1000;
+		steps = 200;
 		break;
 	}
 
@@ -1573,6 +1575,7 @@ void JogMode::jog(ButtonArray::ButtonName direction) {
 	}
 
 	planner::addMoveToBuffer(position, interval);
+	planner::markLastMoveCommand();
 }
 
 void JogMode::notifyButtonPressed(ButtonArray::ButtonName button) {

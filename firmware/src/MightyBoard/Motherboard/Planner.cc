@@ -78,6 +78,7 @@
 #include "Steppers.hh"
 #include "Point.hh"
 #include "Eeprom.hh"
+#include "EepromMap.hh"
 
 // Give the processor some time to breathe and plan...
 #define MIN_MS_PER_SEGMENT 24000
@@ -261,11 +262,21 @@ namespace planner {
 	planner_move_t planner_buffer_data[PLANNER_BUFFER_SIZE];
 	ReusingCircularBufferTempl<planner_move_t> planner_buffer(PLANNER_BUFFER_SIZE, planner_buffer_data);
 	
+	bool accelerationON = true;
+	
 	// let's get verbose
 	volatile bool is_planning_and_using_prev_speed = false;
 	
 	void init()
 	{	
+		
+		// check that acceleration settings have been initialized 
+		// if not, load defaults
+		uint8_t accelerationStatus = eeprom::getEeprom8(eeprom_offsets::ACCELERATION_SETTINGS, 0xFF);
+		if((accelerationStatus != 1) && (accelerationStatus != 0)){
+			eeprom::setDefaultsAcceleration();
+		}
+		
 		// set steps per mm for the replicator
 		setAxisStepsPerMM(XSTEPS_PER_MM, X_AXIS);         
 		setAxisStepsPerMM(YSTEPS_PER_MM, Y_AXIS);
@@ -306,6 +317,9 @@ namespace planner {
 #endif
 	}
 
+	void setAccelerationOn(bool on){
+		accelerationON = on;
+	}
 	
 	void setMaxAxisJerk(float jerk, uint8_t axis) {
 		if (axis < STEPPER_COUNT)
@@ -711,11 +725,12 @@ namespace planner {
 		}
 		
 		Block *block = block_buffer.getHead();
+
 		// Mark block as not busy (Not executed by the stepper interrupt)
 		block->flags = 0;
 		
 		block->target = target;
-
+		
 		// // store the absolute number of steps in each direction, without direction
 		//Point steps = (target - position);
 
@@ -738,6 +753,19 @@ namespace planner {
 		
 		if (block->step_event_count == 0)
 			return false;
+			
+		// if acceleration is not on, skip acceleration steps
+		if(!accelerationON){
+			block->target = target;
+			block->nominal_rate = 1000000/us_per_step;
+			block->accelerate_until = 0;
+			block->decelerate_after = block->step_event_count;
+			block->acceleration_rate = 0;
+			block_buffer.bumpHead();
+	//		INTERFACE_GLED.setValue(false);
+	//		INTERFACE_RLED.setValue(false);
+			return true;
+		}
 		
 		//block->total_intervals = block->step_event_count * us_per_step / INTERVAL_IN_MICROSECONDS;
 		// CLEAN ME: Ugly dirty check to prevent a lot of small moves from causing a planner buffer underrun
@@ -940,6 +968,8 @@ namespace planner {
 		return true;
 	}
 	
+	
+	
 	//bool toggle = true;
 	void runStepperPlannerSlice(){
 		
@@ -979,6 +1009,8 @@ namespace planner {
 		
 		block_buffer.clear();
 		planner_buffer.clear();
+		
+		accelerationON = eeprom::getEeprom8(eeprom_offsets::ACCELERATION_SETTINGS, 1);
 
 #ifdef CENTREPEDAL
 		previous_unit_vec[0]= 0.0;

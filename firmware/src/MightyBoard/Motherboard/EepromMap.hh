@@ -245,5 +245,6 @@ namespace eeprom {
     void setCustomColor(uint8_t red, uint8_t green, uint8_t blue);
     bool isSingleTool();
     void storeToolheadToleranceDefaults();
+    void setDefaultsAcceleration();
 }
 #endif // EEPROMMAP_HHe

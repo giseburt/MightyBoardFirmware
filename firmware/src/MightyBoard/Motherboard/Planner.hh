@@ -176,6 +176,7 @@ namespace planner {
 	
 	void runStepperPlannerSlice();
 	bool planNextMove(const Point& target, int32_t us_per_step, Point& steps);
+	void setAccelerationOn(bool on);
 }
 
 #endif /* end of include guard: PLANNER_HH */
