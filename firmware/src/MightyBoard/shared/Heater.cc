@@ -219,6 +219,7 @@ void Heater::manage_temperature() {
 		}
 
 		current_temperature = sensor.getTemperature();
+		uint8_t old_value_count = value_fail_count;
 		// check that the the heater isn't reading above the maximum allowable temp
 		if (current_temperature > HEATER_CUTOFF_TEMPERATURE) {
 			value_fail_count++;
@@ -255,6 +256,8 @@ void Heater::manage_temperature() {
 					return;
 				}
 		}
+		if(value_fail_count == old_value_count)
+			value_fail_count = 0;
 	}
 	if (fail_state) {
 		return;

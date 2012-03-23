@@ -593,7 +593,7 @@ namespace planner {
 	// implements the forward pass.
 	void planner_forward_pass() {
 		uint8_t block_index = block_buffer.getTailIndex();
-		Block *block[3] = { NULL, NULL, NULL };
+		Block *block[3] = git pull{ NULL, NULL, NULL };
 
 		while(block_index != block_buffer.getHeadIndex()) {
 			block[0] = block[1];
