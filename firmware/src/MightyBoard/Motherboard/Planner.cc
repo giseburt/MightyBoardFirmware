@@ -671,6 +671,7 @@ namespace planner {
 		
 		if(planner_buffer.isFull())
 			return false;
+			
 		
 		Point target;
 		int32_t max_delta = 0;
@@ -679,6 +680,7 @@ namespace planner {
 			if ((relative & (1 << i))) {
 				target[i] = position[i] + move[i];
 				delta = abs(move[i]);
+					
 			} else {
 				target[i] = move[i];
 				delta = abs(target[i] - position[i]);
@@ -725,6 +727,7 @@ namespace planner {
 		}
 		
 		Block *block = block_buffer.getHead();
+		
 
 		// Mark block as not busy (Not executed by the stepper interrupt)
 		block->flags = 0;
@@ -762,6 +765,8 @@ namespace planner {
 			block->decelerate_after = block->step_event_count;
 			block->acceleration_rate = 0;
 			block_buffer.bumpHead();
+			DEBUG_PIN1.setValue(true);
+			steppers::startRunning();
 			return true;
 		}
 		

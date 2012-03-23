@@ -167,6 +167,7 @@ bool getNextMove() {
 	}
 	
 	if (planner::isBufferEmpty()) {
+	//	DEBUG_PIN1.setValue(true);
 		return false;
 	}
 	
@@ -287,7 +288,7 @@ void startRunning() {
 	if (is_running)
 		return;
 	// is_running = true;
-	getNextMove();
+	getNextMove();	
 }
 
 

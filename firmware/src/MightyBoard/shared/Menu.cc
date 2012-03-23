@@ -754,7 +754,7 @@ void FilamentScreen::startMotor(){
     
     planner::setAccelerationOn(false);
     planner::addMoveToBufferRelative(target, interval, 0x1f);
-    planner::markLastMoveCommand();
+ //   planner::markLastMoveCommand();
     filamentTimer.clear();
     filamentTimer.start(300000000); //5 minutes
 }
