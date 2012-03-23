@@ -81,7 +81,7 @@
 #include "EepromMap.hh"
 
 // Give the processor some time to breathe and plan...
-#define MIN_MS_PER_SEGMENT 24000
+#define MIN_MS_PER_SEGMENT 12000
 
 // size of command storage buffer
 #define PLANNER_BUFFER_SIZE 32
@@ -593,7 +593,7 @@ namespace planner {
 	// implements the forward pass.
 	void planner_forward_pass() {
 		uint8_t block_index = block_buffer.getTailIndex();
-		Block *block[3] = git pull{ NULL, NULL, NULL };
+		Block *block[3] = { NULL, NULL, NULL };
 
 		while(block_index != block_buffer.getHeadIndex()) {
 			block[0] = block[1];
@@ -762,8 +762,6 @@ namespace planner {
 			block->decelerate_after = block->step_event_count;
 			block->acceleration_rate = 0;
 			block_buffer.bumpHead();
-	//		INTERFACE_GLED.setValue(false);
-	//		INTERFACE_RLED.setValue(false);
 			return true;
 		}
 		
