@@ -290,7 +290,8 @@ void runCommandSlice() {
 				else{
 					planner::markLastMoveCommand();
 				}
-			}else{
+			}
+			else{
 				planner::markLastMoveCommand();
 			}
 		}
@@ -362,6 +363,7 @@ void runCommandSlice() {
 				if (command_buffer.getLength() >= 2) {
 					command_buffer.pop(); // remove the command code
 					currentToolIndex = command_buffer.pop();
+					planner::changeToolIndex(currentToolIndex);
 				}
 			} else if (command == HOST_CMD_ENABLE_AXES) {
 				if (command_buffer.getLength() >= 2) {

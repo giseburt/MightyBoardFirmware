@@ -20,6 +20,7 @@
 #include <string.h>
 #include "Commands.hh"
 #include "Steppers.hh"
+#include "Planner.hh"
 #include "DebugPacketProcessor.hh"
 #include "Timeout.hh"
 #include "Version.hh"

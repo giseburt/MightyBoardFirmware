@@ -22,6 +22,7 @@
 #include "Motherboard.hh"
 #include "Configuration.hh"
 #include "Steppers.hh"
+#include "Planner.hh"
 #include "Command.hh"
 #include "Interface.hh"
 #include "Commands.hh"
@@ -111,7 +112,7 @@ void Motherboard::reset(bool hard_reset) {
 
 	// Init steppers
 	uint8_t axis_invert = eeprom::getEeprom8(eeprom_offsets::AXIS_INVERSION, 0);
-    SoftI2cManager::getI2cManager().init();
+	SoftI2cManager::getI2cManager().init();
 	// Z holding indicates that when the Z axis is not in
 	// motion, the machine should continue to power the stepper
 	// coil to ensure that the Z stage does not shift.
@@ -125,15 +126,54 @@ void Motherboard::reset(bool hard_reset) {
 	for (int i = 0; i < STEPPER_COUNT; i++) {
 		stepper[i].init(i);
 	}
+
+	// Defaults are for the Replicator -Rob
+	//X 94.1397046
+	planner::setAxisStepsPerMM(eeprom::getEepromFixed32(eeprom_offsets::STEPS_PER_MM+ 0, 94.139704), 0);
+	//Y 94.1397046             
+	planner::setAxisStepsPerMM(eeprom::getEepromFixed32(eeprom_offsets::STEPS_PER_MM+ 4, 94.139704), 1);
+	//Z 2560.0                 
+	planner::setAxisStepsPerMM(eeprom::getEepromFixed32(eeprom_offsets::STEPS_PER_MM+ 8, 400.0), 2);
+	//A 100.470957613814818    
+	planner::setAxisStepsPerMM(eeprom::getEepromFixed32(eeprom_offsets::STEPS_PER_MM+12, 96.2752018), 3);
+	//B 100.470957613814818    
+	planner::setAxisStepsPerMM(eeprom::getEepromFixed32(eeprom_offsets::STEPS_PER_MM+16, 96.2752018), 4);
+
+
+	// Master acceleraion
+	planner::setAcceleration(eeprom::getEeprom32(eeprom_offsets::MASTER_ACCELERATION_RATE, DEFAULT_ACCELERATION));
+
+
+	//X -- default conservative
+	planner::setAxisAcceleration(eeprom::getEeprom32(eeprom_offsets::AXIS_ACCELERATION_RATES+ 0, DEFAULT_X_ACCELERATION), 0);
+	//Y -- default conservative            
+	planner::setAxisAcceleration(eeprom::getEeprom32(eeprom_offsets::AXIS_ACCELERATION_RATES+ 4, DEFAULT_Y_ACCELERATION), 1);
+	//Z -- default conservative            
+	planner::setAxisAcceleration(eeprom::getEeprom32(eeprom_offsets::AXIS_ACCELERATION_RATES+ 8, DEFAULT_Z_ACCELERATION), 2);
+	//A -- default conservative            
+	planner::setAxisAcceleration(eeprom::getEeprom32(eeprom_offsets::AXIS_ACCELERATION_RATES+12, DEFAULT_A_ACCELERATION), 3);
+	//B -- default conservative            
+	planner::setAxisAcceleration(eeprom::getEeprom32(eeprom_offsets::AXIS_ACCELERATION_RATES+16, DEFAULT_B_ACCELERATION), 4);
+
+
+#ifdef CENTREPEDAL
+	// uses the same eeprom address as the X/Y junction jerk~
+	planner::setJunctionDeviation(eeprom::getEepromFixed32(eeprom_offsets::AXIS_JUNCTION_JERK+ 0, DEFAULT_JUNCTION_DEVIATION));
+#else
+	planner::setMaxXYJerk(eeprom::getEepromFixed32(eeprom_offsets::AXIS_JUNCTION_JERK+ 0, DEFAULT_MAX_XY_JERK));
+#endif
+	planner::setMaxAxisJerk(eeprom::getEepromFixed32(eeprom_offsets::AXIS_JUNCTION_JERK+ 4, DEFAULT_MAX_Z_JERK), 2);
+	planner::setMaxAxisJerk(eeprom::getEepromFixed32(eeprom_offsets::AXIS_JUNCTION_JERK+ 8, DEFAULT_MAX_A_JERK), 3);
+	planner::setMaxAxisJerk(eeprom::getEepromFixed32(eeprom_offsets::AXIS_JUNCTION_JERK+12, DEFAULT_MAX_B_JERK), 4);
 	// Initialize the host and slave UARTs
-        UART::getHostUART().enable(true);
-        UART::getHostUART().in.reset();
-    
-    // initialize the extruders
-    Extruder_One.reset();
-    Extruder_Two.reset();
-    
-    Extruder_One.getExtruderHeater().set_target_temperature(0);
+	UART::getHostUART().enable(true);
+	UART::getHostUART().in.reset();
+
+// initialize the extruders
+	Extruder_One.reset();
+	Extruder_Two.reset();
+
+	Extruder_One.getExtruderHeater().set_target_temperature(0);
 	Extruder_Two.getExtruderHeater().set_target_temperature(0);
 	platform_heater.set_target_temperature(0);
 		
@@ -145,7 +185,7 @@ void Motherboard::reset(bool hard_reset) {
 	OCR0A = 0;
 	OCR0B = 0;
 	TIMSK0 = 0b00000000; //interrupts default to off   
-	
+
 	// Reset and configure timer 3, the microsecond and stepper
 	// interrupt timer.
 	TCCR3A = 0x00;
@@ -153,12 +193,12 @@ void Motherboard::reset(bool hard_reset) {
 	TCCR3C = 0x00;
 	OCR3A = INTERVAL_IN_MICROSECONDS * 16;
 	TIMSK3 = 0x02; // turn on OCR3A match interrupt
-	
+
 	// Reset and configure timer 2, the debug LED flasher timer.
 	TCCR2A = 0x00;
 	TCCR2B = 0x07; // prescaler at 1/1024
 	TIMSK2 = 0x01; // OVF flag on
-	
+
 	// reset and configure timer 5, the HBP PWM timer
 	// not currently being used
 	TCCR5A = 0b00000000;  
@@ -166,7 +206,7 @@ void Motherboard::reset(bool hard_reset) {
 	OCR5A = 0;
 	OCR5B = 0;
 	TIMSK5 = 0b00000000; // no interrupts needed
-	
+
 	// reset and configure timer 1, the Extruder Two PWM timer
 	// Mode: Phase-correct PWM with OCRnA(WGM3:0 = 1011), cycle freq= 976 Hz
 	// Prescaler: 1/64 (250 KHz)
@@ -175,7 +215,7 @@ void Motherboard::reset(bool hard_reset) {
 	OCR1A = 0;
 	OCR1B = 0;
 	TIMSK1 = 0b00000000; // no interrupts needed
-	
+
 	// reset and configure timer 4, the Extruder One PWM timer
 	// Mode: Phase-correct PWM with OCRnA (WGM3:0 = 1011), cycle freq= 976 Hz
 	// Prescaler: 1/64 (250 KHz)
@@ -184,23 +224,22 @@ void Motherboard::reset(bool hard_reset) {
 	OCR4A = 0;
 	OCR4B = 0;
 	TIMSK4 = 0b00000000; // no interrupts needed
-		
+
 	// Check if the interface board is attached
 	hasInterfaceBoard = interface::isConnected();
 
 	if (hasInterfaceBoard) {
 		// Make sure our interface board is initialized
-        interfaceBoard.init();
+		interfaceBoard.init();
 
-        // start with welcome script if the first boot flag is not set
-        if(eeprom::getEeprom8(eeprom_offsets::FIRST_BOOT_FLAG, 0) == 0)
-            interfaceBoard.pushScreen(&welcomeScreen);
-        else
-            // otherwise start with the splash screen.
-            interfaceBoard.pushScreen(&splashScreen);
-        
-        
-        if(hard_reset)
+	// start with welcome script if the first boot flag is not set
+		if(eeprom::getEeprom8(eeprom_offsets::FIRST_BOOT_FLAG, 0) == 0)
+			interfaceBoard.pushScreen(&welcomeScreen);
+		else
+	// otherwise start with the splash screen.
+			interfaceBoard.pushScreen(&splashScreen);
+
+		if(hard_reset)
 			_delay_us(3000000);
 
 
@@ -237,7 +276,7 @@ void Motherboard::reset(bool hard_reset) {
 	platform_thermistor.init();
 	platform_heater.reset();
 	buttonWait = false;	
-	
+
 }
 
 /// Get the number of microseconds that have passed since
@@ -261,7 +300,7 @@ void Motherboard::doInterrupt() {
     // if cutoff trigger line is high
 	if(cutoff.isCutoffActive())
 	{
-        // call noise response routine.  This will return true   if the 
+        // call noise response routine.  This will return true if the 
         // cutoff trigger is persistent and not a spike
 		if(!cutoff.noiseResponse()){
 			heatShutdown = true;
@@ -394,18 +433,18 @@ void Motherboard::runMotherboardSlice() {
 				break;
 			case HEATER_FAIL_NOT_PLUGGED_IN:
 				interfaceBoard.errorMessage("Heater Error!       My temperature reads are failing! PleaseCheck my connections");//,79);
-                startButtonWait();
-                heatShutdown = false;
-                return;
+				startButtonWait();
+				heatShutdown = false;
+				return;
 		}
         // blink LEDS red
 		RGB_LED::errorSequence();
 		// disable command processing and steppers
 		host::heatShutdown();
 		command::heatShutdown();
-        interfaceBoard.lock();
-		steppers::abort();
-        for(int i = 0; i < STEPPER_COUNT; i++)
+		interfaceBoard.lock();
+		planner::abort();
+		for(int i = 0; i < STEPPER_COUNT; i++)
 			steppers::enableAxis(i, false);
 	}
 		       

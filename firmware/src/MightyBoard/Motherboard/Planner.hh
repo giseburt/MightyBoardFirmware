@@ -26,35 +26,13 @@
 #ifndef PLANNER_HH
 #define PLANNER_HH
 
+#include "Types.hh"
 #include "Configuration.hh"
-#include <stdint.h>
 #include "Point.hh"
 
 // The number of movements we can plan ahead at a time
 // THIS MUST BE A POWER OF 2! 4, 8, 16, 32, you get the idea...
-#define BLOCK_BUFFER_SIZE 4
-
-#define DEFAULT_ACCELERATION 500.0 // mm/s/s
-#define DEFAULT_X_ACCELERATION 2000.0 // mm/s/s
-#define DEFAULT_Y_ACCELERATION 2000.0 // mm/s/s
-#define DEFAULT_Z_ACCELERATION 100.0 // mm/s/s
-#define DEFAULT_A_ACCELERATION 200.0 // mm/s/s
-#define DEFAULT_B_ACCELERATION 200.0 // mm/s/s
-
-#define DEFAULT_MAX_XY_JERK 8.0 // ms/s <-- unused if CENTREPEDAL is defined below
-#define DEFAULT_MAX_Z_JERK 8.0 // mm/s
-#define DEFAULT_MAX_A_JERK 10.0 // mm/s
-#define DEFAULT_MAX_B_JERK 10.0 // mm/s
-
-// Minimum planner junction speed. Sets the default minimum speed the planner plans for at the end
-// of the buffer and all stops. This should not be much greater than zero and should only be changed
-// if unwanted behavior is observed on a user's machine when running at very slow speeds.
-#define DEFAULT_MINIMUM_PLANNER_SPEED 1.0 // (mm/sec)
-
-//  define CENTREPEDAL to use centrepedal calucations -- so far I can't get there to work -Rob
-#undef CENTREPEDAL
-#define DEFAULT_JUNCTION_DEVIATION 0.05 // mm
-
+#define BLOCK_BUFFER_SIZE 8
 
 namespace planner {
 	// This struct is used when buffering the setup for each linear movement "nominal" values are as specified in 
@@ -62,10 +40,12 @@ namespace planner {
 	class Block {
 	public:
 		typedef enum {
-			Busy          = 1<<0,
-			Recalculate   = 1<<1,
-			NominalLength = 1<<2,
-			PlannedToStop = 1<<3
+			Busy            = 1<<0,
+			Recalculate     = 1<<1,
+			NominalLength   = 1<<2,
+			PlannedToStop   = 1<<3,
+			PlannedFromStop = 1<<4,
+			Locked          = 1<<5,
 		} PlannerFlags;
 
 		// Fields used by the bresenham algorithm for tracing the line
@@ -74,7 +54,6 @@ namespace planner {
 		uint32_t accelerate_until;            // The index of the step event on which to stop acceleration
 		uint32_t decelerate_after;            // The index of the step event on which to start decelerating
 		uint32_t acceleration_rate;           // The acceleration rate used for acceleration calculation
-		uint32_t total_intervals;			// total intervals for move
 		// uint8_t direction_bits;              // The direction bit set for this block
 		// uint8_t active_extruder;             // Selects the active extruder
 		
@@ -85,8 +64,9 @@ namespace planner {
 		float entry_speed;                                 // Entry speed at previous-current junction in mm/min
 		float max_entry_speed;                             // Maximum allowable junction entry speed in mm/min
 		float millimeters;                                 // The total travel of this block in mm
+		float steps_per_mm;                                // The integrated steps/mm for this move
 		float acceleration;                                // acceleration mm/sec^2
-		// float stop_speed;                            // Speed to decelerate to if this is the last move
+		float stop_speed;                            // Speed to decelerate to if this is the last move
 		// uint8_t recalculate_flag;                    // Planner flag to recalculate trapezoids on entry junction
 		// uint8_t nominal_length_flag;                 // Planner flag for nominal speed always reached
 
@@ -101,7 +81,7 @@ namespace planner {
 		Block() : target() {};
 		
 	// functions
-		void calculate_trapezoid(float exit_factor_speed);
+		bool calculate_trapezoid(const float &exit_factor_speed);
 	};
 	class planner_move_t {
 		public:
@@ -143,9 +123,9 @@ namespace planner {
 	/// \param[in] position New system position
 	void definePosition(const Point& position);
 
-    /// Abort the current motion (and all planeed movments) and set the stepper subsystem to
-    /// the not-running state.
-    void abort();
+	/// Abort the current motion (and all planeed movments) and set the stepper subsystem to
+	/// the not-running state.
+	void abort();
 
 	/// Get the current system position
 	/// \return The current machine position.
@@ -165,6 +145,7 @@ namespace planner {
 	
 	bool isBufferFull();
 	bool isBufferEmpty();
+	bool isReady();
 	
 	// Fetches the *tail*
 	Block *getNextBlock();
@@ -172,8 +153,15 @@ namespace planner {
 	// pushes the tail forward, making it available
 	void doneWithNextBlock();
 	
-	void markLastMoveCommand();
+	// how many items are in the buffer
+	uint8_t bufferCount();
 	
+	// mark that the last move command from the buffer
+	void markLastMoveCommand();
+
+	/// Change active tool.  Applies offsets to tool for nozzle separation
+	void changeToolIndex(uint8_t tool);
+
 	void runStepperPlannerSlice();
 	bool planNextMove(const Point& target, int32_t us_per_step, Point& steps);
 	void setAccelerationOn(bool on);

@@ -759,8 +759,8 @@ void FilamentScreen::startMotor(){
     filamentTimer.start(300000000); //5 minutes
 }
 void FilamentScreen::stopMotor(){
-
-    planner::abort();
+    
+    planner::abort(/*soft =*/true);
     for(int i = 0; i < STEPPER_COUNT; i++)
         steppers::enableAxis(i, false);
 
