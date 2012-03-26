@@ -237,14 +237,14 @@
 // bot shuts down printers after a defined timeout 
 #define USER_INPUT_TIMEOUT		1200000000 // 20 minutes
 
-#define XSTEPS_PER_MM                  94.139704f
-#define YSTEPS_PER_MM                  94.139704f
-#define ZSTEPS_PER_MM                  400
-#define ASTEPS_PER_MM				   96.2752018f	
-#define BSTEPS_PER_MM				   96.2752018f	
+#define XSTEPS_PER_MM          94.139704f
+#define YSTEPS_PER_MM          94.139704f
+#define ZSTEPS_PER_MM          400
+#define ASTEPS_PER_MM          96.2752018f
+#define BSTEPS_PER_MM          96.2752018f
 
 
-#define DEFAULT_ACCELERATION 2000.0 // mm/s/s
+#define DEFAULT_ACCELERATION   2000.0 // mm/s/s
 #define DEFAULT_X_ACCELERATION 2000.0 // mm/s/s
 #define DEFAULT_Y_ACCELERATION 2000.0 // mm/s/s
 #define DEFAULT_Z_ACCELERATION 10.0 // mm/s/s

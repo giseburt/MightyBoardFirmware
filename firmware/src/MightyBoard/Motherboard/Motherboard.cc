@@ -41,20 +41,20 @@ Motherboard Motherboard::motherboard;
 
 /// Create motherboard object
 Motherboard::Motherboard() :
-        lcd(LCD_STROBE, LCD_DATA, LCD_CLK),
-        interfaceBoard(buttonArray,
-            lcd,
-            INTERFACE_GLED,
-            INTERFACE_RLED,
-            &mainMenu,
-            &monitorMode,
-            &messageScreen),
-            platform_thermistor(PLATFORM_PIN,0),
-            platform_heater(platform_thermistor,platform_element,SAMPLE_INTERVAL_MICROS_THERMISTOR,
-            		eeprom_offsets::T0_DATA_BASE + toolhead_eeprom_offsets::HBP_PID_BASE, false), //TRICKY: HBP is only and anways on T0 for this machine
-			using_platform(true),
-			Extruder_One(0, EX1_PWR, EX1_FAN, THERMOCOUPLE_CS1,eeprom_offsets::T0_DATA_BASE),
-			Extruder_Two(1, EX2_PWR, EX2_FAN, THERMOCOUPLE_CS2,eeprom_offsets::T1_DATA_BASE)
+	lcd(LCD_STROBE, LCD_DATA, LCD_CLK),
+		interfaceBoard(buttonArray,
+		lcd,
+		INTERFACE_GLED,
+		INTERFACE_RLED,
+		&mainMenu,
+		&monitorMode,
+		&messageScreen),
+	platform_thermistor(PLATFORM_PIN,0),
+	platform_heater(platform_thermistor,platform_element,SAMPLE_INTERVAL_MICROS_THERMISTOR,
+		eeprom_offsets::T0_DATA_BASE + toolhead_eeprom_offsets::HBP_PID_BASE, false), //TRICKY: HBP is only and anways on T0 for this machine
+	using_platform(true),
+	Extruder_One(0, EX1_PWR, EX1_FAN, THERMOCOUPLE_CS1,eeprom_offsets::T0_DATA_BASE),
+	Extruder_Two(1, EX2_PWR, EX2_FAN, THERMOCOUPLE_CS2,eeprom_offsets::T1_DATA_BASE)
 {
 	/// Set up the stepper pins on board creation
 #if STEPPER_COUNT > 0
@@ -129,15 +129,15 @@ void Motherboard::reset(bool hard_reset) {
 
 	// Defaults are for the Replicator -Rob
 	//X 94.1397046
-	planner::setAxisStepsPerMM(eeprom::getEepromFixed32(eeprom_offsets::STEPS_PER_MM+ 0, 94.139704), 0);
+	planner::setAxisStepsPerMM(eeprom::getEepromFixed32(eeprom_offsets::STEPS_PER_MM+ 0, XSTEPS_PER_MM), 0);
 	//Y 94.1397046             
-	planner::setAxisStepsPerMM(eeprom::getEepromFixed32(eeprom_offsets::STEPS_PER_MM+ 4, 94.139704), 1);
+	planner::setAxisStepsPerMM(eeprom::getEepromFixed32(eeprom_offsets::STEPS_PER_MM+ 4, YSTEPS_PER_MM), 1);
 	//Z 2560.0                 
-	planner::setAxisStepsPerMM(eeprom::getEepromFixed32(eeprom_offsets::STEPS_PER_MM+ 8, 400.0), 2);
+	planner::setAxisStepsPerMM(eeprom::getEepromFixed32(eeprom_offsets::STEPS_PER_MM+ 8, ZSTEPS_PER_MM), 2);
 	//A 100.470957613814818    
-	planner::setAxisStepsPerMM(eeprom::getEepromFixed32(eeprom_offsets::STEPS_PER_MM+12, 96.2752018), 3);
+	planner::setAxisStepsPerMM(eeprom::getEepromFixed32(eeprom_offsets::STEPS_PER_MM+12, ASTEPS_PER_MM), 3);
 	//B 100.470957613814818    
-	planner::setAxisStepsPerMM(eeprom::getEepromFixed32(eeprom_offsets::STEPS_PER_MM+16, 96.2752018), 4);
+	planner::setAxisStepsPerMM(eeprom::getEepromFixed32(eeprom_offsets::STEPS_PER_MM+16, BSTEPS_PER_MM), 4);
 
 
 	// Master acceleraion

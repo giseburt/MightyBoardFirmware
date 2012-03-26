@@ -747,20 +747,20 @@ void SelectAlignmentMenu::handleSelect(uint8_t index) {
 void FilamentScreen::startMotor(){
     int32_t interval = 300000000;  // 5 minutes
     int32_t steps = interval / 6250;
-    if(forward)
+    if (forward)
         steps *= -1;
-    Point target = Point(0,0,0, 0,0);
+    Point target = Point(0,0,0,0,0);
     target[axisID] = steps;
     
-    planner::setAccelerationOn(false);
     planner::addMoveToBufferRelative(target, interval, 0x1f);
  //   planner::markLastMoveCommand();
     filamentTimer.clear();
     filamentTimer.start(300000000); //5 minutes
 }
+
 void FilamentScreen::stopMotor(){
-    
-    planner::abort(/*soft =*/true);
+    // TODO: change this to soft-stop
+    planner::abort();
     for(int i = 0; i < STEPPER_COUNT; i++)
         steppers::enableAxis(i, false);
 

@@ -109,7 +109,8 @@ bool StepperAxis::checkEndstop(const bool isHoming) {
 #endif
 }
 
-bool StepperAxis::doInterrupt(const int32_t &intervals, const int8_t step_multiplier) {
+// intervals in the caller is volatile, allow a copy
+bool StepperAxis::doInterrupt(const int32_t intervals, const int8_t step_multiplier) {
 	if (delta == 0) return false;
 	bool hit_endstop = checkEndstop(false);
 	
@@ -148,8 +149,8 @@ bool StepperAxis::doInterrupt(const int32_t &intervals, const int8_t step_multip
 	return !hit_endstop;
 }
 
-
-bool StepperAxis::doHoming(const int32_t &intervals, const int8_t step_multiplier) {
+// intervals in the caller is volatile, allow a copy
+bool StepperAxis::doHoming(const int32_t intervals, const int8_t step_multiplier) {
         if (delta == 0) return false;
         counter += delta;
         if (counter >= 0) {

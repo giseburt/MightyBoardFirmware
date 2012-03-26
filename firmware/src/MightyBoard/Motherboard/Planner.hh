@@ -34,6 +34,9 @@
 // THIS MUST BE A POWER OF 2! 4, 8, 16, 32, you get the idea...
 #define BLOCK_BUFFER_SIZE 8
 
+#define TICKS_PER_ACCELERATION   5  // lower is better
+#define ACCELERATION_TICKS_PER_SECOND (1000000/(INTERVAL_IN_MICROSECONDS*TICKS_PER_ACCELERATION))
+
 namespace planner {
 	// This struct is used when buffering the setup for each linear movement "nominal" values are as specified in 
 	// the source g-code and may never actually be reached if acceleration management is active.
@@ -99,7 +102,7 @@ namespace planner {
 	/// \param[in] target New position to move to, in step-space
 	/// \param[in] us_per_step Homing speed, in us per step
 	/// \return If the move was buffered
-	bool addMoveToBuffer(const Point& target, int32_t us_per_step);
+	bool addMoveToBuffer(const Point& target, const int32_t &us_per_step);
 
 	/// Buffer a movement to the target point (in step-space). We should avoid this, as it requires more calculation.
 	/// \param[in] target New position to move to, in step-space
@@ -108,7 +111,7 @@ namespace planner {
 	///                     interpret the new position as absolute or
 	///                     relative.
 	/// \return If the move was buffered
-	bool addMoveToBufferRelative(const Point& target, const int32_t ms, const int8_t relative);
+	bool addMoveToBufferRelative(const Point& move, const int32_t &ms, const int8_t relative);
 
 	/// Home one or more axes
 	/// \param[in] maximums If true, home in the positive direction
@@ -163,7 +166,7 @@ namespace planner {
 	void changeToolIndex(uint8_t tool);
 
 	void runStepperPlannerSlice();
-	bool planNextMove(const Point& target, int32_t us_per_step, Point& steps);
+	bool planNextMove(const Point& target, const int32_t &us_per_step_in, const Point& steps);
 	void setAccelerationOn(bool on);
 }
 

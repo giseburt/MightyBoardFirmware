@@ -28,7 +28,7 @@
 class StepperInterface {
 private:
     /// Default constructor
-    // StepperInterface() {}
+    StepperInterface() {}
     StepperInterface(const Pin& dir,
                     const Pin& step,
                     const Pin& enable,

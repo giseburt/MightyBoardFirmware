@@ -13,10 +13,9 @@ namespace interface {
 LiquidCrystalSerial* lcd;
 InterfaceBoard* board;
 
-// Avoid repeatedly creating temp objects
-Pin InterfaceDetect = INTERFACE_DETECT;
-
 bool isConnected() {
+	// Avoid repeatedly creating temp objects
+	const Pin InterfaceDetect = INTERFACE_DETECT;
 
 	// Strategy: Set up the foo pin as an input, turn on pull up resistor,
 	// then measure it. If low, then we probably have an interface board.

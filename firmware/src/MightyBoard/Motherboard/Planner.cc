@@ -86,7 +86,7 @@
 #define MIN_MS_PER_SEGMENT_USB 12000
 
 // size of command storage buffer
-#define PLANNER_BUFFER_SIZE 32
+#define PLANNER_BUFFER_SIZE 16
 
 #define X_AXIS 0
 #define Y_AXIS 1
@@ -608,14 +608,15 @@ namespace planner {
 		return planner_buffer.isFull(); 
 	}
 	
+	// Are we completely out of upcoming moves?
 	bool isBufferEmpty() {
-		bool is_buffer_empty = block_buffer.isEmpty();
-		
+		bool is_buffer_empty = block_buffer.isEmpty() && planner_buffer.isEmpty();
 		return is_buffer_empty;
 	}
 	
+	// Is the move in the buffer ready to use?
 	bool isReady() {
-		return !(force_replan_from_stopped | block_buffer.isEmpty() | planner_buffer.isEmpty());
+		return !(force_replan_from_stopped | block_buffer.isEmpty());
 	}
 	
 	uint8_t bufferCount() {
@@ -643,12 +644,12 @@ namespace planner {
 		block_buffer.bumpTail();
 	}
 	
-	bool addMoveToBufferRelative(const Point& move, const int32_t ms, const int8_t relative)
+	bool addMoveToBufferRelative(const Point& move, const int32_t &ms, const int8_t relative)
 	{
 		if(planner_buffer.isFull())
 			return false;
 		
-		Point target;
+		Point target = move + *tool_offsets;
 		int32_t max_delta = 0;
 		for (int i = 0; i < STEPPER_COUNT; i++) {
 			int32_t delta = 0;
@@ -656,7 +657,7 @@ namespace planner {
 				target[i] = position[i] + move[i];
 				delta = abs(move[i]);
 			} else {
-				target[i] = move[i];
+				target[i] = move[i] + (*tool_offsets)[0];
 				delta = abs(target[i] - position[i]);
 				
 			}
@@ -668,7 +669,7 @@ namespace planner {
 			planner_move_t *newMove = planner_buffer.getHead();
 			newMove->target = target; 
 			newMove->us_per_step = ms/max_delta;
-			newMove->steps = target-position;
+			newMove->steps = target - position;
 			planner_buffer.bumpHead();
 		}
 		position = target;
@@ -676,16 +677,18 @@ namespace planner {
 	}
 
 	// Buffer the move. IOW, add a new block, and recalculate the acceleration accordingly
-	bool addMoveToBuffer(const Point& target, int32_t us_per_step)
+	bool addMoveToBuffer(const Point& target, const int32_t &us_per_step)
 	{
 		if(planner_buffer.isFull())
 			return false;
 			
+		Point offset_target = target + *tool_offsets;
+			
 		ATOMIC_BLOCK(ATOMIC_FORCEON){
 			planner_move_t *move = planner_buffer.getHead();
-			move->target = target; 
+			move->target = offset_target; 
 			move->us_per_step = us_per_step;
-			move->steps = target - position;
+			move->steps = offset_target - position;
 			planner_buffer.bumpHead();
 		}
 		position = target;
@@ -694,9 +697,8 @@ namespace planner {
 	}
 
 
-	bool planNextMove(const Point& set_target, int32_t us_per_step, Point& steps)
+	bool planNextMove(const Point& target, const int32_t &us_per_step_in, const Point& steps)
 	{
-		
 		if (block_buffer.isFull()) {
 			return false;
 		}
@@ -705,12 +707,9 @@ namespace planner {
 		// Mark block as not busy (Not executed by the stepper interrupt)
 		block->flags = 0;
 		
-		Point target = set_target + *tool_offsets;
-		
 		block->target = target;
-
-		// // store the number of steps for each axis
-		Point steps = (target - position);
+		
+		uint32_t us_per_step = us_per_step_in;
 
 		float delta_mm[STEPPER_COUNT];
 		float local_millimeters = 0.0;
@@ -976,9 +975,6 @@ namespace planner {
 		memcpy(previous_speed, current_speed, sizeof(previous_speed)); // previous_speed[] = current_speed[]
 		previous_nominal_speed = local_nominal_speed;
 
-		// Update position
-		position = target;
-
 		// move locals to the block
 		block->millimeters = local_millimeters;
 		block->steps_per_mm = steps_per_mm;
@@ -1019,7 +1015,7 @@ namespace planner {
 	
 	void markLastMoveCommand() {
 		// if they're already running, this does no harm
-		steppers::startRunning();
+		// steppers::startRunning();
 	}
 	
 	void startHoming(const bool maximums,
