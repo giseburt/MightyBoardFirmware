@@ -32,10 +32,18 @@
 
 // The number of movements we can plan ahead at a time
 // THIS MUST BE A POWER OF 2! 4, 8, 16, 32, you get the idea...
-#define BLOCK_BUFFER_SIZE 8
+#define BLOCK_BUFFER_SIZE 16
+
+// size of command storage buffer
+#define PLANNER_BUFFER_SIZE 16
 
 #define TICKS_PER_ACCELERATION   5  // lower is better
 #define ACCELERATION_TICKS_PER_SECOND (1000000/(INTERVAL_IN_MICROSECONDS*TICKS_PER_ACCELERATION))
+
+// Give the processor some time to breathe and plan...
+#define MIN_MS_PER_SEGMENT_SD 20000
+#define MIN_MS_PER_SEGMENT_USB 40000
+
 
 namespace planner {
 	// This struct is used when buffering the setup for each linear movement "nominal" values are as specified in 

@@ -81,13 +81,6 @@
 #include "Eeprom.hh"
 #include "EepromMap.hh"
 
-// Give the processor some time to breathe and plan...
-#define MIN_MS_PER_SEGMENT_SD 12000
-#define MIN_MS_PER_SEGMENT_USB 12000
-
-// size of command storage buffer
-#define PLANNER_BUFFER_SIZE 16
-
 #define X_AXIS 0
 #define Y_AXIS 1
 #define Z_AXIS 2
@@ -1002,15 +995,15 @@ namespace planner {
 		if (force_replan_from_stopped)
 			planner_recalculate();
 		
-		if (planner_buffer.isEmpty())
-			return;
+		// Do no more than five blocks at a time
+		int8_t limiter = 50;
 		
-		if (block_buffer.isFull())
-			return;
-			
-		planner_move_t *move = planner_buffer.getTail();
-		planner_buffer.bumpTail();
-		planNextMove(move->target, move->us_per_step, move->steps);
+		while (!planner_buffer.isEmpty() && !block_buffer.isFull() && limiter-- > 0)
+		{	
+			planner_move_t *move = planner_buffer.getTail();
+			planner_buffer.bumpTail();
+			planNextMove(move->target, move->us_per_step, move->steps);
+		}
 	}
 	
 	void markLastMoveCommand() {

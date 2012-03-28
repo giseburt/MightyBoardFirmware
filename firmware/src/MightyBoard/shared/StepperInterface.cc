@@ -72,7 +72,7 @@ void StepperInterface::setEnabled(const bool enabled) {
 void StepperInterface::init(const uint8_t idx) {
 	dir_pin.setDirection(true);
 	step_pin.setDirection(true);
-	enable_pin.setValue(true);
+	enable_pin.setValueOn();
 	enable_pin.setDirection(true);
 	
 	eeprom_pot_offset = 4 + idx;

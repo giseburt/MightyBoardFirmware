@@ -50,7 +50,7 @@ bool processExtruderQueryPacket(const InPacket& from_host, OutPacket& to_host);
 Timeout packet_in_timeout;
 Timeout cancel_timeout;
 
-#define HOST_PACKET_TIMEOUT_MS 20
+#define HOST_PACKET_TIMEOUT_MS 200
 #define HOST_PACKET_TIMEOUT_MICROS (1000L*HOST_PACKET_TIMEOUT_MS)
 
 //#define HOST_TOOL_RESPONSE_TIMEOUT_MS 50
