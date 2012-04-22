@@ -95,7 +95,8 @@ include_paths = ['MightyBoard/shared', 'MightyBoard/Motherboard',  '.']
 
 flags=[
 	'-DF_CPU='+str(f_cpu),
-        '-DCUTOFF_PRESENT='+ cutoff,
+	'-DCUTOFF_PRESENT='+ cutoff,
+	'-D__PROG_TYPES_COMPAT__', # see http://www.nongnu.org/avr-libc//changes-1.8.html
 	'-DVERSION='+str(version),
 	'-mmcu='+mcu,
 	'-g',
