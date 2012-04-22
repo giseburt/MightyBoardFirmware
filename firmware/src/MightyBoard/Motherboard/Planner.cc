@@ -74,12 +74,13 @@
 #include <math.h>
 #include <stdlib.h>
 #include <string.h> // for memmove and memcpy
-#include "SDCard.hh" // sdcard::isPlaying()
 
 #include "Steppers.hh"
 #include "Point.hh"
 #include "Eeprom.hh"
 #include "EepromMap.hh"
+
+#include "Motherboard.hh" // for getCurrentMicros()
 
 #define X_AXIS 0
 #define Y_AXIS 1
@@ -252,6 +253,8 @@ namespace planner {
 	float previous_nominal_speed; // Nominal speed of previous path line segment
 	static float max_xy_jerk;
 	
+	uint32_t min_ms_per_segment = DEFAULT_MIN_MS_PER_SEGMENT;
+	
 	Block block_buffer_data[BLOCK_BUFFER_SIZE];
 	ReusingCircularBufferTempl<Block> block_buffer(BLOCK_BUFFER_SIZE, block_buffer_data);
 	planner_move_t planner_buffer_data[PLANNER_BUFFER_SIZE];
@@ -263,7 +266,7 @@ namespace planner {
 	Point tolerance_offset_T1;
 	Point *tool_offsets;
 	
-	uint32_t additional_ms_per_segment;
+	int32_t additional_ms_per_segment;
 	
 	volatile bool force_replan_from_stopped;
 	
@@ -580,7 +583,7 @@ namespace planner {
 						next->entry_speed = next->stop_speed;
 						next->flags |= Block::Recalculate | Block::PlannedFromStop;
 						// Bump the min_ms_per_segment so this doesn't happen again
-						// additional_ms_per_segment += 250;
+						min_ms_per_segment += 500;
 						return false;
 					}
 					// Reset current only to ensure next trapezoid is computed
@@ -696,6 +699,8 @@ namespace planner {
 			return false;
 		}
 		
+		// micros_t plan_start_time = Motherboard::getBoard().getCurrentMicros();
+		
 		planner_move_t *move = planner_buffer.getTail();
 		const Point& target = move->target;
 		const int32_t &us_per_step_in = move->us_per_step;
@@ -765,8 +770,7 @@ namespace planner {
 		}
 
 		// CLEAN ME: Ugly dirty check to prevent a lot of small moves from causing a planner buffer underrun
-		// For now, we'll just make sure each movement takes at least MIN_MS_PER_SEGMENT millisesconds to complete
-		uint32_t min_ms_per_segment = additional_ms_per_segment + (sdcard::isPlaying() ? MIN_MS_PER_SEGMENT_SD : MIN_MS_PER_SEGMENT_USB);
+		// For now, we'll just make sure each movement takes at least min_ms_per_segment millisesconds to complete
 		if ((us_per_step * local_step_event_count) < min_ms_per_segment) {
 			us_per_step = min_ms_per_segment / local_step_event_count;
 		}
@@ -992,6 +996,19 @@ namespace planner {
 			steppers::startRunning();
 		// }
 
+		// Here we try to adjust how much to slow moves based on how much time it takes to plan
+		// To avoid stuttering, we need time to plan at least one move, with some room, while one is executing.
+		// micros_t plan_end_time = Motherboard::getBoard().getCurrentMicros();
+		// uint32_t duration_doubled = (plan_end_time - plan_start_time) << 1;
+		// if (duration_doubled > min_ms_per_segment) {
+		// 	// In case there's one or two really slow plans, we don't want to slow down the whole print,
+		// 	// so we'll adjust by half the difference at a time.
+		// 	min_ms_per_segment += (min_ms_per_segment - duration_doubled) >> 1;
+		// } else if (duration_doubled > 1000 && duration_doubled < (min_ms_per_segment - 1000)) {
+		// 	// The 1000 is so that we have some padding.
+		// 	min_ms_per_segment -= 50; // slowly allow it to speed up
+		// }
+		
 		return true;
 	}
 		
