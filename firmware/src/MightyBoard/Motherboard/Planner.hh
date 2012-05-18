@@ -35,13 +35,13 @@
 #define BLOCK_BUFFER_SIZE 16
 
 // size of command storage buffer
-#define PLANNER_BUFFER_SIZE 16
+// #define PLANNER_BUFFER_SIZE 16
 
 #define TICKS_PER_ACCELERATION   5  // lower is better
 #define ACCELERATION_TICKS_PER_SECOND (1000000/(INTERVAL_IN_MICROSECONDS*TICKS_PER_ACCELERATION))
 
 // Give the processor some time to breathe and plan...
-#define DEFAULT_MIN_MS_PER_SEGMENT	15000
+#define DEFAULT_MIN_MS_PER_SEGMENT	20000
 
 namespace planner {
 	// This struct is used when buffering the setup for each linear movement "nominal" values are as specified in 
@@ -170,7 +170,7 @@ namespace planner {
 	void changeToolIndex(uint8_t tool);
 
 	void runStepperPlannerSlice();
-	bool planNextMove();
+	bool planNextMove(const Point& target, const int32_t &us_per_step_in, const Point& steps);
 	void setAccelerationOn(bool on);
 }
 

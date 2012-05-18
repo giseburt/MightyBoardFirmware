@@ -257,8 +257,8 @@ namespace planner {
 	
 	Block block_buffer_data[BLOCK_BUFFER_SIZE];
 	ReusingCircularBufferTempl<Block> block_buffer(BLOCK_BUFFER_SIZE, block_buffer_data);
-	planner_move_t planner_buffer_data[PLANNER_BUFFER_SIZE];
-	ReusingCircularBufferTempl<planner_move_t> planner_buffer(PLANNER_BUFFER_SIZE, planner_buffer_data);
+  // planner_move_t planner_buffer_data[PLANNER_BUFFER_SIZE];
+  // ReusingCircularBufferTempl<planner_move_t> planner_buffer(PLANNER_BUFFER_SIZE, planner_buffer_data);
 	
 	bool accelerationON = true;
 
@@ -602,12 +602,12 @@ namespace planner {
 	}
 
 	bool isBufferFull() {
-		return planner_buffer.isFull(); 
+		return block_buffer.isFull(); 
 	}
 	
 	// Are we completely out of upcoming moves?
 	bool isBufferEmpty() {
-		bool is_buffer_empty = block_buffer.isEmpty() && planner_buffer.isEmpty();
+		bool is_buffer_empty = block_buffer.isEmpty()/* && planner_buffer.isEmpty()*/;
 		return is_buffer_empty;
 	}
 	
@@ -644,8 +644,8 @@ namespace planner {
 	void addMoveToBufferRelative(const Point& move, const int32_t &ms, const int8_t relative)
 	{
 		// This should have been prevented before we get here...
-		while (planner_buffer.isFull())
-			planNextMove(); // make room now!
+    // while (planner_buffer.isFull())
+    //  planNextMove(); // make room now!
 		
 		Point target = move + *tool_offsets;
 		int32_t max_delta = 0;
@@ -663,13 +663,14 @@ namespace planner {
 				max_delta = delta;
 			}
 		}
-		ATOMIC_BLOCK(ATOMIC_FORCEON){
-			planner_move_t *newMove = planner_buffer.getHead();
-			newMove->target = target; 
-			newMove->us_per_step = ms/max_delta;
-			newMove->steps = target - position;
-			planner_buffer.bumpHead();
-		}
+		// ATOMIC_BLOCK(ATOMIC_FORCEON){
+		//  planner_move_t *newMove = planner_buffer.getHead();
+		//  newMove->target = target; 
+		//  newMove->us_per_step = ms/max_delta;
+		//  newMove->steps = target - position;
+		//  planner_buffer.bumpHead();
+		// }
+		planNextMove(target, ms/max_delta, target - position);
 		position = target;
 	}
 
@@ -677,35 +678,36 @@ namespace planner {
 	void addMoveToBuffer(const Point& target, const int32_t &us_per_step)
 	{
 		// This should have been prevented before we get here...
-		while (planner_buffer.isFull())
-			planNextMove(); // make room now!
+		// while (planner_buffer.isFull())
+		// 	planNextMove(); // make room now!
 			
 		Point offset_target = target + *tool_offsets;
 			
-		ATOMIC_BLOCK(ATOMIC_FORCEON){
-			planner_move_t *move = planner_buffer.getHead();
-			move->target = offset_target; 
-			move->us_per_step = us_per_step;
-			move->steps = offset_target - position;
-			planner_buffer.bumpHead();
-		}
+		// ATOMIC_BLOCK(ATOMIC_FORCEON){
+		//  planner_move_t *move = planner_buffer.getHead();
+		//  move->target = offset_target; 
+		//  move->us_per_step = us_per_step;
+		//  move->steps = offset_target - position;
+		//  planner_buffer.bumpHead();
+		// }
+		planNextMove(offset_target, us_per_step, offset_target - position);
 		position = target;
 	}
 
 
-	bool planNextMove()
+	bool planNextMove(const Point& target, const int32_t &us_per_step_in, const Point& steps)
 	{
-		if (block_buffer.isFull() || planner_buffer.isEmpty()) {
-			return false;
-		}
-		
-		// micros_t plan_start_time = Motherboard::getBoard().getCurrentMicros();
-		
-		planner_move_t *move = planner_buffer.getTail();
-		const Point& target = move->target;
-		const int32_t &us_per_step_in = move->us_per_step;
-		const Point& steps = move->steps;
-		planner_buffer.bumpTail();
+		// if (block_buffer.isFull()/* || planner_buffer.isEmpty()*/) {
+		//  return false;
+		// }
+		// 
+		// // micros_t plan_start_time = Motherboard::getBoard().getCurrentMicros();
+		// 
+		// planner_move_t *move = planner_buffer.getTail();
+		// const Point& target = move->target;
+		// const int32_t &us_per_step_in = move->us_per_step;
+		// const Point& steps = move->steps;
+		// planner_buffer.bumpTail();
 		
 		Block *block = block_buffer.getHead();
 		// Mark block as not busy (Not executed by the stepper interrupt)
@@ -1018,13 +1020,13 @@ namespace planner {
 		if (force_replan_from_stopped)
 			planner_recalculate();
 		
-		// Do no more than five blocks at a time
-		int8_t limiter = 5;
-		bool success = true;
-		while (success && limiter-- > 0)
-		{	
-			success = planNextMove();
-		}
+		// // Do no more than five blocks at a time
+		// int8_t limiter = 5;
+		// bool success = true;
+		// while (success && limiter-- > 0)
+		// {	
+		// 	success = planNextMove();
+		// }
 	}
 	
 	void markLastMoveCommand() {
@@ -1070,7 +1072,7 @@ namespace planner {
 		previous_nominal_speed = 0.0;
 		
 		block_buffer.clear();
-		planner_buffer.clear();
+		// planner_buffer.clear();
 		
 		accelerationON = eeprom::getEeprom8(eeprom_offsets::ACCELERATION_SETTINGS, 1);
 
