@@ -57,7 +57,6 @@ public:
         ExtruderBoard& getExtruderBoard(uint8_t id) { if(id == 1){ return Extruder_Two;} else  { return Extruder_One;} }
 
 private:
-
 	/// Microseconds since board initialization
 	volatile micros_t micros;
 
@@ -104,7 +103,7 @@ public:
 	void runMotherboardSlice();
 
 	/// Count the number of steppers available on this board.
-        const int getStepperCount() const { return STEPPER_COUNT; }
+	const int getStepperCount() const { return STEPPER_COUNT; }
 	
 	/// Get the number of microseconds that have passed since
 	/// the board was initialized.  This value will wrap after
@@ -121,6 +120,9 @@ public:
 
 	/// Perform the timer interrupt routine.
 	void doInterrupt();
+
+	/// Perform the timer interrupt routine.
+	void doMicrosInterrupt();
 	
 	bool isUsingPlatform() { return using_platform; }
 	void setUsingPlatform(bool is_using);

@@ -804,7 +804,7 @@ namespace planner {
 				local_acceleration_st = axes[i].max_acceleration;
 		}
 		block->acceleration = local_acceleration_st / steps_per_mm;
-		block->acceleration_rate = local_acceleration_st / ACCELERATION_TICKS_PER_SECOND;
+		block->acceleration_rate = local_acceleration_st * ACCELERATION_MAGIC;
 
 		// Determine the stop_speed for this move
 		float stop_speed = local_nominal_speed;

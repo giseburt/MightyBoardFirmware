@@ -22,12 +22,9 @@
 
 #include "AvrPort.hh"
 
-// Interval for the stepper update in microseconds.  This interval is the minimum
-// possible time between steps; in practical terms, your time between steps should
-// be at least eight times this large.  Reducing the interval can cause resource
-// starvation; leave this at 64uS or greater unless you know what you're doing.
-#define INTERVAL_IN_MICROSECONDS 256
-#define HOMING_INTERVAL_IN_MICROSECONDS 128
+// This is the prescaler for the stepper clock. It should be either 8 or 1.
+// If you make it 1, then the step timer calculactions may overflow. You've been warned. -RobG
+#define STEPPER_CLOCK_PRESCALER 8
 
 // --- Power Supply Unit configuration ---
 // Define as 1 if a PSU is present; 0 if not.

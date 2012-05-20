@@ -33,18 +33,18 @@ Timeout::Timeout() : active(false), elapsed(false) {}
 void Timeout::start(micros_t duration_micros_in) {
 	active = true;
 	elapsed = false;
-    start_stamp_micros = getMicros();
+	start_stamp_micros = getMicros();
 	duration_micros = duration_micros_in;
 }
 void Timeout::restart() {
 	active = true;
 	elapsed = false;
-    start_stamp_micros = getMicros();
+	start_stamp_micros = getMicros();
 }
 
 bool Timeout::hasElapsed() {
 	if (active && !elapsed) {
-                micros_t delta = getMicros() - start_stamp_micros;
+		micros_t delta = getMicros() - start_stamp_micros;
 		if (delta >= duration_micros) {
 			active = false;
 			elapsed = true;

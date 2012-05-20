@@ -92,19 +92,37 @@ void Motherboard::reset(bool hard_reset) {
 	OCR0B = 0;
 	TIMSK0 = 0b00000000; //interrupts default to off   
 	
-	// Reset and configure timer 3, the microsecond and stepper
-	// interrupt timer.
+	// Reset and configure timer 3 stepper interrupt timer.
 	TCCR3A = 0x00;
-	TCCR3B = 0x09;
+#if STEPPER_CLOCK_PRESCALER == 1
+	TCCR3B = 0x009; // prescale clock/1
+#elif STEPPER_CLOCK_PRESCALER == 8
+	TCCR3B = 0x00A; // prescale clock/8
+#else
+	#error STEPPER_CLOCK_PRESCALER changes requires TCCR3B changes
+	/******
+	 * For the Atmega1280/2560:
+	 * TCCR3A = 0x00 with
+	 * TCCR3B = 0x08 is CTC and uses OCR3A as TOP
+	 * OR it with:
+	 *  0x01 for F_CPU/1
+	 *  0x02 for F_CPU/8
+	 *  0x03 for F_CPU/64 (absurd)
+	 * the rest is too absurd to list
+	 */
+#endif
+
 	TCCR3C = 0x00;
-	OCR3A = INTERVAL_IN_MICROSECONDS * 16;
-	TIMSK3 = 0x02; // turn on OCR3A match interrupt
+	OCR3A = 0;
+	TIMSK3 = 0x00; // turn off OCR3A match interrupt
 	
-	// Reset and configure timer 2, the debug LED flasher timer.
-	TCCR2A = 0x00;
-	TCCR2B = 0x07; // prescaler at 1/1024
-	TIMSK2 = 0x01; // OVF flag on
-	
+	// Reset and configure timer 2, the debug LED flasher and microsecond timer.
+	// If you change any of this, you must change the microsecond calculations below.
+	TCCR2A = 0x01; // CTC
+	// TCCR2B = 0x07; // prescaler at 1/1024
+	TCCR2B = 0x04; // prescaler at 1/64 F_CPU
+	TIMSK2 = 0x01; // turn on overflow interrupt
+		
 	// reset and configure timer 5, the HBP PWM timer
 	// not currently being used
 	TCCR5A = 0b00000000;  
@@ -136,32 +154,32 @@ void Motherboard::reset(bool hard_reset) {
 
 	if (hasInterfaceBoard) {
 		// Make sure our interface board is initialized
-        interfaceBoard.init();
+		interfaceBoard.init();
 
-        // start with welcome script if the first boot flag is not set
-        if(eeprom::getEeprom8(eeprom_offsets::FIRST_BOOT_FLAG, 0) == 0)
-            interfaceBoard.pushScreen(&welcomeScreen);
-        else
-            // otherwise start with the splash screen.
-            interfaceBoard.pushScreen(&splashScreen);
-        
-        
-        if(hard_reset)
+		// start with welcome script if the first boot flag is not set
+		if(eeprom::getEeprom8(eeprom_offsets::FIRST_BOOT_FLAG, 0) == 0)
+			interfaceBoard.pushScreen(&welcomeScreen);
+		else
+			// otherwise start with the splash screen.
+			interfaceBoard.pushScreen(&splashScreen);
+
+
+		if(hard_reset)
 			_delay_us(3000000);
 
 
-        // Finally, set up the interface
-        interface::init(&interfaceBoard, &lcd);
+				// Finally, set up the interface
+		interface::init(&interfaceBoard, &lcd);
 
-        interface_update_timeout.start(interfaceBoard.getUpdateRate());
-    }
-    
-    // interface LEDs default to full ON
-    interfaceBlink(0,0);
-    
-    // only call the piezo buzzer on full reboot start up
-    // do not clear heater fail messages, though the user should not be able to soft reboot from heater fail
-    if(hard_reset)
+		interface_update_timeout.start(interfaceBoard.getUpdateRate());
+	}
+
+		// interface LEDs default to full ON
+	interfaceBlink(0,0);
+
+		// only call the piezo buzzer on full reboot start up
+		// do not clear heater fail messages, though the user should not be able to soft reboot from heater fail
+	if(hard_reset)
 	{
 		// Configure the debug pins.
 		DEBUG_PIN.setDirection(true);
@@ -207,8 +225,6 @@ micros_t Motherboard::getCurrentMicros() {
 
 /// Run the motherboard interrupt
 void Motherboard::doInterrupt() {
-
-	micros += INTERVAL_IN_MICROSECONDS;
 	// Do not move steppers if the board is in a paused state
 	if (command::isPaused()) return;
 	steppers::doInterrupt();
@@ -433,14 +449,15 @@ void Motherboard::indicateError(int error_code) {
 // set on / off period for blinking interface LEDs
 // if both times are zero, LEDs are full on, if just on-time is zero, LEDs are full OFF
 void Motherboard::interfaceBlink(int on_time, int off_time){
+	// All incoming times are in (1 << 14) = 16384 microsecond ticks.
 	
-	if(off_time == 0){
+	if (off_time == 0) {
 		interface_blink_state = BLINK_NONE;
 		interface::setLEDs(true);
-	}else if(on_time == 0){
+	} else if (on_time == 0) {
 		interface_blink_state = BLINK_NONE;
 		interface::setLEDs(false);
-	} else{
+	} else {
 		interface_on_time = on_time;
 		interface_off_time = off_time;
 		interface_blink_state = BLINK_ON;
@@ -467,8 +484,31 @@ int blinked_so_far = 0;
 /// Number of overflows remaining on the current overflow blink cycle
 int interface_ovfs_remaining = 0;
 
-/// Timer 2 overflow interrupt
+// A alittle setup for the microsecond clock
+// Taken graciously from Arduino, and this Wiring -RobG
+
+#define clockCyclesPerMicrosecond() ( F_CPU / 1000000L )
+#define clockCyclesToMicroseconds(a) ( (a) / clockCyclesPerMicrosecond() )
+
+// the prescaler is set so that timer0 ticks every 64 clock cycles, and the
+// the overflow handler is called every 256 ticks.
+#define MICROSECONDS_PER_TIMER2_OVERFLOW (clockCyclesToMicroseconds(64 * 256))
+
+void Motherboard::doMicrosInterrupt() {
+	micros += MICROSECONDS_PER_TIMER2_OVERFLOW;
+}
+
+// We need to adjust the blink timing to once every 16 interrupts
+// so we use this counter, and let it overflow naturally.
+uint8_t blink_overflow_counter = 0;
+
+/// Timer 2 overflow interrupt (Blink LEDs and micros)
 ISR(TIMER2_OVF_vect) {
+	Motherboard::getBoard().doMicrosInterrupt();
+
+	if (blink_overflow_counter++ & 0x0F != 0)
+		return;
+	
 	/// Debug LEDS on Motherboard
 	if (blink_ovfs_remaining > 0) {
 		blink_ovfs_remaining--;

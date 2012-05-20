@@ -26,6 +26,94 @@
 
 namespace steppers {
 
+// undefine stdlib's abs if encountered
+#ifdef abs
+#undef abs
+#endif
+
+#ifdef labs
+#undef labs
+#endif
+
+template <typename T>
+inline T abs(T x) { return (x)>0?(x):-(x); }
+
+template <>
+inline int abs(int x) { return __builtin_abs(x); }
+
+template <>
+inline long abs(long x) { return __builtin_labs(x); }
+
+// intRes = intIn1 * intIn2 >> 16
+// uses:
+// r26 to store 0
+// r27 to store the byte 1 of the 24 bit result
+#define MultiU16X8toH16(intRes, charIn1, intIn2) \
+	asm volatile ( \
+	"clr r26 \n\t" \
+	"mul %A1, %B2 \n\t" \
+	"movw %A0, r0 \n\t" \
+	"mul %A1, %A2 \n\t" \
+	"add %A0, r1 \n\t" \
+	"adc %B0, r26 \n\t" \
+	"lsr r0 \n\t" \
+	"adc %A0, r26 \n\t" \
+	"adc %B0, r26 \n\t" \
+	"clr r1 \n\t" \
+	: \
+	"=&r" (intRes) \
+	: \
+	"d" (charIn1), \
+	"d" (intIn2) \
+	: \
+	"r26" \
+	)
+
+// intRes = longIn1 * longIn2 >> 24
+// uses:
+// r26 to store 0
+// r27 to store the byte 1 of the 48bit result
+#define MultiU24X24toH16(intRes, longIn1, longIn2) \
+	asm volatile ( \
+	"clr r26 \n\t" \
+	"mul %A1, %B2 \n\t" \
+	"mov r27, r1 \n\t" \
+	"mul %B1, %C2 \n\t" \
+	"movw %A0, r0 \n\t" \
+	"mul %C1, %C2 \n\t" \
+	"add %B0, r0 \n\t" \
+	"mul %C1, %B2 \n\t" \
+	"add %A0, r0 \n\t" \
+	"adc %B0, r1 \n\t" \
+	"mul %A1, %C2 \n\t" \
+	"add r27, r0 \n\t" \
+	"adc %A0, r1 \n\t" \
+	"adc %B0, r26 \n\t" \
+	"mul %B1, %B2 \n\t" \
+	"add r27, r0 \n\t" \
+	"adc %A0, r1 \n\t" \
+	"adc %B0, r26 \n\t" \
+	"mul %C1, %A2 \n\t" \
+	"add r27, r0 \n\t" \
+	"adc %A0, r1 \n\t" \
+	"adc %B0, r26 \n\t" \
+	"mul %B1, %A2 \n\t" \
+	"add r27, r1 \n\t" \
+	"adc %A0, r26 \n\t" \
+	"adc %B0, r26 \n\t" \
+	"lsr r27 \n\t" \
+	"adc %A0, r26 \n\t" \
+	"adc %B0, r26 \n\t" \
+	"clr r1 \n\t" \
+	: \
+	"=&r" (intRes) \
+	: \
+	"d" (longIn1), \
+	"d" (longIn2) \
+	: \
+	"r26" , "r27" \
+	)
+
 
 /// Set up the digipot pins 
 DigiPots digi_pots[STEPPER_COUNT] = {
@@ -94,10 +182,13 @@ feedrate_element feedrate_elements[3];
 volatile int32_t feedrate_steps_remaining;
 volatile int32_t feedrate;
 volatile int32_t feedrate_target; // convenient storage to save lookup time
-volatile int8_t  feedrate_dirty; // indicates if the feedrate_inverted needs recalculated
-volatile int32_t feedrate_inverted;
+volatile int8_t  feedrate_dirty; // indicates if the feedrate timer needs recalculated
+volatile int32_t feedrate_start;
 volatile int32_t feedrate_changerate;
-volatile int32_t acceleration_tick_counter;
+volatile int32_t feedrate_total_time;
+volatile int32_t feedrate_timer;
+volatile int8_t  feedrate_multiplier;
+// volatile int32_t acceleration_tick_counter;
 volatile uint8_t current_feedrate_index;
 
 volatile int32_t timer_counter;
@@ -230,9 +321,10 @@ void init() {
 	
 	feedrate_steps_remaining = 0;
 	feedrate = 0;
-	feedrate_inverted = 0;
 	feedrate_dirty = 1;
-	acceleration_tick_counter = 0;
+	feedrate_total_time = 0;
+	feedrate_timer = 0;
+	feedrate_multiplier = 1;
 	current_feedrate_index = 0;
 }
 
@@ -243,12 +335,13 @@ void abort() {
 	current_block = NULL;
 	feedrate_steps_remaining = 0;
 	feedrate = 0;
-	feedrate_inverted = 0;
 	feedrate_dirty = 1;
-	acceleration_tick_counter = 0;
+	feedrate_total_time = 0;
+	feedrate_timer = 0;
+	feedrate_multiplier = 1;
 	current_feedrate_index = 0;
-	OCR3A = INTERVAL_IN_MICROSECONDS * 16;
-	
+	OCR3A = 0;
+	TIMSK3 = 0x00; // turn off OCR3A match interrupt
 }
 
 /// Define current position as given point
@@ -276,22 +369,52 @@ inline void prepareFeedrateIntervals() {
 		return;
 	}
 
+	feedrate_start            = feedrate;
 	feedrate_steps_remaining  = feedrate_elements[current_feedrate_index].steps;
 	feedrate_changerate       = feedrate_elements[current_feedrate_index].rate;
 	feedrate_target           = feedrate_elements[current_feedrate_index].target;
+	feedrate_total_time       = 0;
+	feedrate_timer            = 0;
+	feedrate_multiplier       = 1;
 }
 
 inline void recalcFeedrate() {
-	
-	if((feedrate > 32768)){
-		feedrate_inverted = 30;
+	uint16_t timer;
+	uint32_t step_rate = feedrate;
+	// if(step_rate > MAX_STEP_FREQUENCY) step_rate = MAX_STEP_FREQUENCY;
+
+	feedrate_multiplier = 1;
+
+	// Scale the step_rate, multi-stepping will be automatic
+	if(step_rate > 20000) { // If steprate > 20kHz >> step 4 times
+		step_rate = (step_rate >> 2)&0x3fff;
+		feedrate_multiplier = 4;
 	}
-	else if(feedrate >= 8192)
-		feedrate_inverted = (int32_t)pgm_read_byte(&rate_table_fast[(feedrate-8192) >> 4]);
-	else {
-		if(feedrate < 32) {feedrate = 32;}
-		feedrate_inverted = (int32_t)pgm_read_word(&rate_table_slow[feedrate]);
+	else if(step_rate > 10000) { // If steprate > 10kHz >> step 2 times
+		step_rate = (step_rate >> 1)&0x7fff;
+		feedrate_multiplier = 2;
 	}
+
+	if(step_rate < (F_CPU/500000)) step_rate = (F_CPU/500000);
+	step_rate -= (F_CPU/500000); // Correct for minimal speed
+
+	if(step_rate >= (8*256)){ // higher step rate 
+		uint16_t table_address = (uint16_t)&speed_lookuptable_fast[(uint8_t)(step_rate>>8)][0];
+		uint8_t tmp_step_rate = (step_rate & 0x00ff);
+		uint16_t gain = (uint16_t)pgm_read_word_near(table_address+2);
+		MultiU16X8toH16(timer, tmp_step_rate, gain);
+		timer = (uint16_t)pgm_read_word_near(table_address) - timer;
+	}
+	else { // lower step rates
+		uint16_t table_address = (uint16_t)&speed_lookuptable_slow[0][0];
+		table_address += ((step_rate)>>1) & 0xfffc;
+		timer = (uint16_t)pgm_read_word_near(table_address);
+		timer -= (((uint16_t)pgm_read_word_near(table_address+2) * (uint8_t)(step_rate & 0x0007))>>3);
+	}
+	if(timer < 100) { timer = 100; }//(20kHz this should never happen)
+
+	feedrate_timer = timer;
+	OCR3A = timer;
 	
 	feedrate_dirty = 0;
 }
@@ -390,6 +513,8 @@ bool getNextMove() {
 
 	if (!planner::isReady()) {
 		is_running = !planner::isBufferEmpty();
+		if (!is_running)
+			TIMSK3 = 0x00; // turn off OCR3A match interrupt
 		return false;
 	}
 
@@ -443,18 +568,19 @@ bool getNextMove() {
 		feedrate_elements[feedrate_being_setup-1].steps     = INT16_MAX;
 		// We don't setup anything else because we limit to the target speed anyway.
 	}
-
+		
 	// unlock the block
 	current_block->flags &= ~planner::Block::Locked;
 
 	if (feedrate == 0) {
 		is_running = false;
+		TIMSK3 = 0x00; // turn off OCR3A match interrupt
 		return false;
 	}
 
 	prepareFeedrateIntervals();
 	recalcFeedrate();
-	acceleration_tick_counter = TICKS_PER_ACCELERATION;
+	// acceleration_tick_counter = TICKS_PER_ACCELERATION;
 
 	timer_counter = 0;
 
@@ -471,12 +597,8 @@ bool getNextMove() {
 	counter[B_AXIS] = negative_half_interval;
 #endif
 	is_running = true;
+	TIMSK3 = 0x02; // turn on OCR3A match interrupt
 	
-	if(delta[Z_AXIS] > ZSTEPS_PER_MM*10){
-		OCR3A = HOMING_INTERVAL_IN_MICROSECONDS * 16;
-	} else {
-		OCR3A = INTERVAL_IN_MICROSECONDS * 16;
-	}
 	return true;
 }
 
@@ -582,11 +704,21 @@ bool currentBlockChanged(const planner::Block *block_check) {
 void startHoming(const bool maximums, const uint8_t axes_enabled, const uint32_t us_per_step) {
 	intervals_remaining = INT32_MAX;
 	intervals = 1;
-	feedrate_inverted = us_per_step;
-	// ToDo: Return to using the interval if the us_per_step > INTERVAL_IN_MICROSECONDS
-	const int32_t negative_half_interval = -1;
 	
-	OCR3A = HOMING_INTERVAL_IN_MICROSECONDS * 16;
+	feedrate_multiplier = 1;
+	if (us_per_step < 50) {
+		feedrate_multiplier = 4;
+		OCR3A = us_per_step >> 1; // (us_per_step / 2) * 4		
+	}
+	else if (us_per_step < 100) {
+		feedrate_multiplier = 2;
+		OCR3A = us_per_step; // (us_per_step / 2) * 2
+	}
+	else {
+		OCR3A = us_per_step << 1; // us_per_step / 2
+	}
+	
+	const int32_t negative_half_interval = -1;
 	
 	for (int i = 0; i < STEPPER_COUNT; i++) {
 		counter[i] = negative_half_interval;
@@ -618,8 +750,8 @@ void startHoming(const bool maximums, const uint8_t axes_enabled, const uint32_t
 		step_change[Z_AXIS] = direction[Z_AXIS] ? 1 : -1;
 	}
 	
-	timer_counter = feedrate_inverted;
 	is_homing = true;
+	TIMSK3 = 0x02; // turn on OCR3A match interrupt
 }
 
 /// Enable/disable the given axis.
@@ -630,7 +762,7 @@ void enableAxis(uint8_t index, bool enable) {
 		case X_AXIS: 
 			_WRITE(X_ENABLE, !enable);
 			break;
-        case Y_AXIS: 
+		case Y_AXIS: 
 			_WRITE(Y_ENABLE, !enable);
 			break;
 		case Z_AXIS: 
@@ -656,6 +788,7 @@ void startRunning() {
 	if (is_running)
 		return;
 	is_running = true;
+	TIMSK3 = 0x02; // turn on OCR3A match interrupt
 	// getNextMove();
 }
 
@@ -717,200 +850,194 @@ bool doInterrupt() {
 				return is_running;
 			}
 		}
-		
-		timer_counter -= INTERVAL_IN_MICROSECONDS;
-
-		if (timer_counter < 0) {
-			// if we are supposed to step too fast, we simulate double-size microsteps
-			int8_t feedrate_multiplier = 1;
-			timer_counter += feedrate_inverted;
-				
-			while (timer_counter < 0 && feedrate_multiplier < intervals_remaining) {
-				feedrate_multiplier++;
-				timer_counter += feedrate_inverted;
-			}
-
-			bool axis_active[STEPPER_COUNT];
+	
+		bool axis_active[STEPPER_COUNT];
 
 #if defined(SINGLE_SWITCH_ENDSTOPS) && (SINGLE_SWITCH_ENDSTOPS == 1)
-			for (int i = 0; i < STEPPER_COUNT; i++){
-				axis_active[i] = IsActive(i);
-			}
+		for (int i = 0; i < STEPPER_COUNT; i++){
+			axis_active[i] = IsActive(i);
+		}
 #else		
-			//TODO: Port this to handle max/min pins = NULL and non-inverted endstops ( see old stepper interface functions)
-			//TODO: READ ENDSTOPS ALL AT ONCE
-			axis_active[X_AXIS] = (delta[X_AXIS] != 0) && !(direction[X_AXIS] ? !_READ(X_MAX) : !_READ(X_MIN));
-			axis_active[Y_AXIS] = (delta[Y_AXIS] != 0) && !(direction[Y_AXIS] ? !_READ(Y_MAX) : !_READ(Y_MIN));	
-			axis_active[Z_AXIS] = (delta[Z_AXIS] != 0) && !(direction[Z_AXIS] ? !_READ(Z_MAX) : !_READ(Z_MIN));
+		//TODO: Port this to handle max/min pins = NULL and non-inverted endstops ( see old stepper interface functions)
+		//TODO: READ ENDSTOPS ALL AT ONCE
+		axis_active[X_AXIS] = (delta[X_AXIS] != 0) && !(direction[X_AXIS] ? !_READ(X_MAX) : !_READ(X_MIN));
+		axis_active[Y_AXIS] = (delta[Y_AXIS] != 0) && !(direction[Y_AXIS] ? !_READ(Y_MAX) : !_READ(Y_MIN));	
+		axis_active[Z_AXIS] = (delta[Z_AXIS] != 0) && !(direction[Z_AXIS] ? !_READ(Z_MAX) : !_READ(Z_MIN));
 #if STEPPER_COUNT > 3
-			axis_active[A_AXIS] = (delta[A_AXIS] != 0);
+		axis_active[A_AXIS] = (delta[A_AXIS] != 0);
 #endif
 #if STEPPER_COUNT > 4
-			axis_active[B_AXIS] = (delta[B_AXIS] != 0); 
+		axis_active[B_AXIS] = (delta[B_AXIS] != 0); 
 #endif
 #endif
-			
-			for (uint8_t i = 0; i < feedrate_multiplier; i++){
-				if(axis_active[X_AXIS]){
-					counter[X_AXIS] += delta[X_AXIS] ;
-					if (counter[X_AXIS]  >= 0) {
-						_WRITE(X_STEP, true);
-						counter[X_AXIS]  -= intervals ;
-						position[X_AXIS]  += step_change[X_AXIS] ;
-						_WRITE(X_STEP, false);
-					}
-				}
-				if(axis_active[Y_AXIS])	{
-					counter[Y_AXIS] += delta[Y_AXIS] ;
-					if (counter[Y_AXIS]  >= 0) {
-						_WRITE(Y_STEP, true);
-						counter[Y_AXIS]  -= intervals ;
-						position[Y_AXIS]  += step_change[Y_AXIS] ;
-						_WRITE(Y_STEP, false);
-					}
-				}
-				if(axis_active[Z_AXIS])	{
-					counter[Z_AXIS] += delta[Z_AXIS] ;
-					if (counter[Z_AXIS]  >= 0) {
-						_WRITE(Z_STEP, true);
-						counter[Z_AXIS]  -= intervals ;
-						position[Z_AXIS]  += step_change[Z_AXIS] ;
-						_WRITE(Z_STEP, false);
-					}
-				}
-	#if STEPPER_COUNT > 3
-				if(axis_active[A_AXIS]){
-					counter[A_AXIS] += delta[A_AXIS] ;
-					if (counter[A_AXIS]  >= 0) {
-						_WRITE(A_STEP, true);
-						counter[A_AXIS]  -= intervals ;
-						position[A_AXIS]  += step_change[A_AXIS] ;
-						_WRITE(A_STEP, false);
-					}
-				}
-	#endif
-	#if STEPPER_COUNT > 4
-				if(axis_active[B_AXIS]){
-					counter[B_AXIS] += delta[B_AXIS] ;
-					if (counter[B_AXIS]  >= 0) {
-						_WRITE(B_STEP, true);
-						counter[B_AXIS]  -= intervals ;
-						position[B_AXIS]  += step_change[B_AXIS] ;
-						_WRITE(B_STEP, false);
-					}
-				}
-	#endif
-
-			}
-			intervals_remaining -= feedrate_multiplier;
-
-			if (intervals_remaining <= 0) { // should never need the < part, but just in case...
-				bool got_a_move = getNextMove();
-				if (!got_a_move) {
-					//DEBUG_PIN1.setValue(false);
-					return is_running;
+		
+		for (uint8_t i = 0; i < feedrate_multiplier; i++){
+			if(axis_active[X_AXIS]){
+				counter[X_AXIS] += delta[X_AXIS] ;
+				if (counter[X_AXIS]  >= 0) {
+					_WRITE(X_STEP, true);
+					counter[X_AXIS]  -= intervals ;
+					position[X_AXIS]  += step_change[X_AXIS] ;
+					_WRITE(X_STEP, false);
 				}
 			}
-
-			if ((feedrate_steps_remaining-=feedrate_multiplier) <= 0) {
-				current_feedrate_index++;
-				prepareFeedrateIntervals();
+			if(axis_active[Y_AXIS])	{
+				counter[Y_AXIS] += delta[Y_AXIS] ;
+				if (counter[Y_AXIS]  >= 0) {
+					_WRITE(Y_STEP, true);
+					counter[Y_AXIS]  -= intervals ;
+					position[Y_AXIS]  += step_change[Y_AXIS] ;
+					_WRITE(Y_STEP, false);
+				}
 			}
+			if(axis_active[Z_AXIS])	{
+				counter[Z_AXIS] += delta[Z_AXIS] ;
+				if (counter[Z_AXIS]  >= 0) {
+					_WRITE(Z_STEP, true);
+					counter[Z_AXIS]  -= intervals ;
+					position[Z_AXIS]  += step_change[Z_AXIS] ;
+					_WRITE(Z_STEP, false);
+				}
+			}
+#if STEPPER_COUNT > 3
+			if(axis_active[A_AXIS]){
+				counter[A_AXIS] += delta[A_AXIS] ;
+				if (counter[A_AXIS]  >= 0) {
+					_WRITE(A_STEP, true);
+					counter[A_AXIS]  -= intervals ;
+					position[A_AXIS]  += step_change[A_AXIS] ;
+					_WRITE(A_STEP, false);
+				}
+			}
+#endif
+#if STEPPER_COUNT > 4
+			if(axis_active[B_AXIS]){
+				counter[B_AXIS] += delta[B_AXIS] ;
+				if (counter[B_AXIS]  >= 0) {
+					_WRITE(B_STEP, true);
+					counter[B_AXIS]  -= intervals ;
+					position[B_AXIS]  += step_change[B_AXIS] ;
+					_WRITE(B_STEP, false);
+				}
+			}
+#endif
 
-			if (feedrate_dirty) {
-				recalcFeedrate();
+		}
+		intervals_remaining -= feedrate_multiplier;
+
+		if (intervals_remaining <= 0) { // should never need the < part, but just in case...
+			bool got_a_move = getNextMove();
+			if (!got_a_move) {
+				//DEBUG_PIN1.setValue(false);
+				return is_running;
 			}
 		}
 
-		if (feedrate_changerate != 0 && acceleration_tick_counter-- <= 0) {
-			acceleration_tick_counter = TICKS_PER_ACCELERATION;
-			// Change our feedrate. Here it's important to note that we can over/undershoot
+		if ((feedrate_steps_remaining-=feedrate_multiplier) <= 0) {
+			current_feedrate_index++;
+			prepareFeedrateIntervals();
 
-			feedrate += feedrate_changerate;
 			feedrate_dirty = 1;
-
-			if ((feedrate_changerate > 0 && feedrate > feedrate_target)
-			    || (feedrate_changerate < 0 && feedrate < feedrate_target)) {
-				
-				feedrate_changerate = 0;
-				feedrate = feedrate_target;
-			} 
 		}
+
+		if (feedrate_changerate != 0 /* && acceleration_tick_counter-- <= 0 */) {
+			// Change our feedrate. Here it's important to note that we can over/undershoot
+			
+			MultiU24X24toH16(feedrate, feedrate_total_time, abs(feedrate_changerate));
+			// Right here, feedrate is a temporary offset value
+			
+			if (feedrate_changerate > 0) {
+				// We offset up from the initial_rate
+				feedrate += feedrate_start;
+				if (feedrate > feedrate_target) {
+					feedrate_changerate = 0;
+					feedrate = feedrate_target;
+				}
+			} else {
+				if (feedrate > feedrate_start)
+					// we decelerated longer than we accelerated, go to feedrate_target
+					feedrate = feedrate_target;
+				else
+					// we decelerate from the value we accelerated to, or the start value
+					feedrate = feedrate_start - feedrate;
+				
+				// is this redundant? 
+				if (feedrate < feedrate_target) {
+					feedrate_changerate = 0;
+					feedrate = feedrate_target;
+				}
+			}
+			
+			feedrate_dirty = 1;
+		}
+
+		if (feedrate_dirty) {
+			recalcFeedrate();
+		}
+		
+		feedrate_total_time += feedrate_timer;
+		
 		//DEBUG_PIN1.setValue(false);
 		return is_running;
 	} else if (is_homing) {
-		timer_counter -= HOMING_INTERVAL_IN_MICROSECONDS;
-		if (timer_counter <= 0) {
+		//TODO: Port endstop check to handle max/min pins = NULL and non-inverted endstops ( see old stepper interface functions)
+		for (int8_t i = 0; i < feedrate_multiplier && is_homing; i++){
 			is_homing = false;
-			// if we are supposed to step too fast, we simulate double-size microsteps
-			int8_t feedrate_multiplier = 1;
-			while (timer_counter <= -feedrate_inverted) {
-				feedrate_multiplier++;
-				timer_counter += feedrate_inverted;
-			}
-
-			//TODO: Port endstop check to handle max/min pins = NULL and non-inverted endstops ( see old stepper interface functions)
-			for (int8_t i = 0; i < feedrate_multiplier; i++){
-				if (delta[X_AXIS] != 0){
-					counter[X_AXIS] += delta[X_AXIS];
-					if (counter[X_AXIS] >= 0) {
-						counter[X_AXIS] -= intervals;
-						bool hit_endstop = direction[X_AXIS] ? !_READ(X_MAX) : !_READ(X_MIN);
-						if (!hit_endstop) {
-							_WRITE(X_STEP, true);
-							is_homing |= true;
-							position[X_AXIS] += step_change[X_AXIS];
-							_WRITE(X_STEP, false);
-						} else {
-							is_homing |= false;
-						}
-					}
-				}
-				
-				if (delta[Y_AXIS] != 0){
-					counter[Y_AXIS] += delta[Y_AXIS];
-					if (counter[Y_AXIS] >= 0) {
-						counter[Y_AXIS] -= intervals;
-						bool hit_endstop = direction[Y_AXIS] ? !_READ(Y_MAX) : !_READ(Y_MIN);
-						if (!hit_endstop) {
-							_WRITE(Y_STEP, true);
-							is_homing |= true;
-							position[Y_AXIS] += step_change[Y_AXIS];
-							_WRITE(Y_STEP, false);
-						} else {
-							is_homing |= false;
-						}
-					}
-				}
-				
-				if (delta[Z_AXIS] != 0){
-					counter[Z_AXIS] += delta[Z_AXIS];
-					if (counter[Z_AXIS] >= 0) {
-						counter[Z_AXIS] -= intervals;
-						bool hit_endstop = direction[Z_AXIS] ? !_READ(Z_MAX) : !_READ(Z_MIN);
-						if (!hit_endstop) {
-							_WRITE(Z_STEP, true);
-							is_homing |= true;
-							position[Z_AXIS] += step_change[Z_AXIS];
-							_WRITE(Z_STEP, false);
-						} else {
-							is_homing |= false;
-						}
+			
+			if (delta[X_AXIS] != 0){
+				counter[X_AXIS] += delta[X_AXIS];
+				if (counter[X_AXIS] >= 0) {
+					counter[X_AXIS] -= intervals;
+					bool hit_endstop = direction[X_AXIS] ? !_READ(X_MAX) : !_READ(X_MIN);
+					if (!hit_endstop) {
+						_WRITE(X_STEP, true);
+						is_homing = true;
+						position[X_AXIS] += step_change[X_AXIS];
+						_WRITE(X_STEP, false);
 					}
 				}
 			}
 			
-			// if we're done, force a sync with the planner
-			if (!is_homing)
-				planner::abort();
-
-			timer_counter += feedrate_inverted;
+			if (delta[Y_AXIS] != 0){
+				counter[Y_AXIS] += delta[Y_AXIS];
+				if (counter[Y_AXIS] >= 0) {
+					counter[Y_AXIS] -= intervals;
+					bool hit_endstop = direction[Y_AXIS] ? !_READ(Y_MAX) : !_READ(Y_MIN);
+					if (!hit_endstop) {
+						_WRITE(Y_STEP, true);
+						is_homing = true;
+						position[Y_AXIS] += step_change[Y_AXIS];
+						_WRITE(Y_STEP, false);
+					}
+				}
+			}
+			
+			if (delta[Z_AXIS] != 0){
+				counter[Z_AXIS] += delta[Z_AXIS];
+				if (counter[Z_AXIS] >= 0) {
+					counter[Z_AXIS] -= intervals;
+					bool hit_endstop = direction[Z_AXIS] ? !_READ(Z_MAX) : !_READ(Z_MIN);
+					if (!hit_endstop) {
+						_WRITE(Z_STEP, true);
+						is_homing = true;
+						position[Z_AXIS] += step_change[Z_AXIS];
+						_WRITE(Z_STEP, false);
+					}
+				}
+			}
 		}
+			
 		// if we're done, force a sync with the planner
-		if (!is_homing)
+		if (!is_homing) {
+			TIMSK3 = 0x00; // turn off OCR3A match interrupt
 			planner::abort();
+		}
+
 		//DEBUG_PIN1.setValue(false);
 		return is_homing;
+	} else {
+		// if isRunning is false, and isHoming is false, we need to kill this timer
+		TIMSK3 = 0x00; // turn off OCR3A match interrupt
 	}
 	//DEBUG_PIN1.setValue(false);
 	return false;
