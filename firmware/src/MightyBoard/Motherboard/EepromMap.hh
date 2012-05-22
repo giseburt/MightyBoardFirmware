@@ -156,7 +156,7 @@ namespace acceleration_eeprom_offsets{
 	const static uint16_t ACTIVE_OFFSET	= 0x00;
 	const static uint16_t ACCELERATION_RATE_OFFSET = 0x02;
 	const static uint16_t AXIS_RATES_OFFSET = 0x04;
-	const static uint16_t AXIS_JERK_OFFSET = 0x0D;
+	const static uint16_t AXIS_JERK_OFFSET = 0x0E;
 }
 
 // buzz on/off settings
