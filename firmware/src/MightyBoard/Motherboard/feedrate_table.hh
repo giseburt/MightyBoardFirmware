@@ -91,6 +91,8 @@ const uint16_t speed_lookuptable_slow[256][2] PROGMEM = {
 
 #elif F_CPU == 16000000L && STEPPER_CLOCK_PRESCALER == 1
 
+#warning THIS WILL OVERFLOW
+
 const uint16_t speed_lookuptable_fast[256][2] PROGMEM = {
    {500000, 444445}, {55555, 26144}, {29411, 9411}, {20000, 4849}, {15151, 2956}, {12195, 1991}, {10204, 1433}, {8771, 1079},
    {7692, 843}, {6849, 677}, {6172, 555}, {5617, 463}, {5154, 393}, {4761, 337}, {4424, 292}, {4132, 257},

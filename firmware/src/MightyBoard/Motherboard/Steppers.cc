@@ -191,8 +191,6 @@ volatile int8_t  feedrate_multiplier;
 // volatile int32_t acceleration_tick_counter;
 volatile uint8_t current_feedrate_index;
 
-volatile int32_t timer_counter;
-
 volatile bool is_homing;
 
 bool holdZ = false;
@@ -308,8 +306,6 @@ void init() {
 	
 	ResetCounters();
 
-	timer_counter = 0;
-
 	current_block = NULL;
 	
 	for (int i = 0; i < 3; i++) {
@@ -331,7 +327,6 @@ void init() {
 void abort() {
 	is_running = false;
 	is_homing = false;
-	timer_counter = 0;
 	current_block = NULL;
 	feedrate_steps_remaining = 0;
 	feedrate = 0;
@@ -580,9 +575,6 @@ bool getNextMove() {
 
 	prepareFeedrateIntervals();
 	recalcFeedrate();
-	// acceleration_tick_counter = TICKS_PER_ACCELERATION;
-
-	timer_counter = 0;
 
 	intervals = max_delta;
 	intervals_remaining = intervals;
@@ -936,7 +928,6 @@ bool doInterrupt() {
 		if ((feedrate_steps_remaining-=feedrate_multiplier) <= 0) {
 			current_feedrate_index++;
 			prepareFeedrateIntervals();
-
 			feedrate_dirty = 1;
 		}
 
