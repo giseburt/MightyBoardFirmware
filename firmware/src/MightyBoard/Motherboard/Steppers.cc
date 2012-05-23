@@ -373,12 +373,13 @@ inline void prepareFeedrateIntervals() {
 	feedrate_multiplier       = 1;
 }
 
+// calculate (F_CPU/STEPPER_CLOCK_PRESCALER) / feedrate
 inline void recalcFeedrate() {
 	uint16_t timer;
 	uint32_t step_rate = feedrate;
-	// if(step_rate > MAX_STEP_FREQUENCY) step_rate = MAX_STEP_FREQUENCY;
-
+	
 	feedrate_multiplier = 1;
+  if(step_rate > MAX_STEP_FREQUENCY) step_rate = MAX_STEP_FREQUENCY;
 
 	// Scale the step_rate, multi-stepping will be automatic
 	if(step_rate > 20000) { // If steprate > 20kHz >> step 4 times

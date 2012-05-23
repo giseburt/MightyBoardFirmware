@@ -265,8 +265,8 @@ namespace planner {
 			eeprom::storeToolheadToleranceDefaults();
 		}
 		
-		setAxisStepsPerMM(XSTEPS_PER_MM,0);           
-		setAxisStepsPerMM(YSTEPS_PER_MM,1);               
+		setAxisStepsPerMM(XSTEPS_PER_MM,0);
+		setAxisStepsPerMM(YSTEPS_PER_MM,1);
 		setAxisStepsPerMM(ZSTEPS_PER_MM,2);
 		setAxisStepsPerMM(ASTEPS_PER_MM,3);
 		setAxisStepsPerMM(BSTEPS_PER_MM,4);
@@ -680,6 +680,7 @@ namespace planner {
 		position = target;
 	}
 
+#define MIN_US_PER_STEP (1000000L/MAX_STEP_FREQUENCY)
 
 	///
 	bool planNextMove(Point& target, const int32_t us_per_step_in, const Point& steps)
@@ -695,6 +696,11 @@ namespace planner {
 		block->target = target;
 		
 		uint32_t us_per_step = us_per_step_in;
+		
+		// Make sure we adhere to the stepper MAX_STEP_FREQUENCY when planning
+		if (us_per_step < MIN_US_PER_STEP) {
+			us_per_step = MIN_US_PER_STEP;
+		}
 
 		float delta_mm[STEPPER_COUNT];
 		float local_millimeters = 0.0;

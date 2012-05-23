@@ -28,6 +28,10 @@
 
 #include "Motherboard.hh"
 
+// Maximum speed, in steps/second, of any stepper.
+// Set here because the planner uses it too.
+#define MAX_STEP_FREQUENCY 5000
+
 namespace steppers {
 
     /// Initialize the stepper subsystem.
