@@ -761,11 +761,11 @@ namespace planner {
 		}
 
 		// if printing from RepG, ensure moves take a minimum amount of time so that the serial transfer can keep up
-		if(!sdcard::isPlaying() ){
+		// if(!sdcard::isPlaying() ){
 			if ((us_per_step * local_step_event_count) < MIN_MS_PER_SEGMENT) {
 				us_per_step = MIN_MS_PER_SEGMENT / local_step_event_count;
 			}
-		}
+		// }
 		
 	/*	uint8_t moves_queued = block_buffer.getUsedCount();
 		if ((moves_queued  > 1) && (moves_queued < (BLOCK_BUFFER_SIZE >> 1))){

@@ -50,7 +50,7 @@
 
 // Give the processor some time to breathe and plan...
 //#define MIN_MS_PER_SEGMENT_SD 10000
-#define MIN_MS_PER_SEGMENT 10000
+#define MIN_MS_PER_SEGMENT 30000
 
 enum axes{ 
 	X_AXIS = 0,
