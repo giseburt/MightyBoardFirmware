@@ -35,9 +35,6 @@
 // this is because the circular buffer implementation uses bit shifting for size and increment operations
 #define BLOCK_BUFFER_SIZE 16
 
-// #define TICKS_PER_ACCELERATION   5  // lower is better
-// const int32_t ACCELERATION_TICKS_PER_SECOND  = (1000000/(INTERVAL_IN_MICROSECONDS*TICKS_PER_ACCELERATION));
-
 #if F_CPU == 16000000L && STEPPER_CLOCK_PRESCALER == 1
 // 2^24 / (F_CPU / STEPPER_CLOCK_PRESCALER)
 #define ACCELERATION_MAGIC 1.048576
@@ -50,7 +47,7 @@
 
 // Give the processor some time to breathe and plan...
 //#define MIN_MS_PER_SEGMENT_SD 10000
-#define MIN_MS_PER_SEGMENT 30000
+#define MIN_MS_PER_SEGMENT 10000
 
 enum axes{ 
 	X_AXIS = 0,

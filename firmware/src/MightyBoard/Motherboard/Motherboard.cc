@@ -186,6 +186,10 @@ void Motherboard::reset(bool hard_reset) {
 		DEBUG_PIN1.setDirection(true);
 		DEBUG_PIN2.setDirection(true);
 		DEBUG_PIN3.setDirection(true);	
+		DEBUG_PIN4.setDirection(true);
+		DEBUG_PIN5.setDirection(true);
+		DEBUG_PIN6.setDirection(true);
+		DEBUG_PIN7.setDirection(true);
 		
 		RGB_LED::init();
 		
@@ -194,6 +198,8 @@ void Motherboard::reset(bool hard_reset) {
 		heatShutdown = false;
 		heatFailMode = HEATER_FAIL_NONE;
 		cutoff.init();
+		
+		board_status = STATUS_NONE;
     } 	
     
      // initialize the extruders
@@ -229,16 +235,6 @@ void Motherboard::doInterrupt() {
 	if (command::isPaused()) return;
 	steppers::doInterrupt();
 	
-    // if cutoff trigger line is high
-//	if(cutoff.isCutoffActive())
-//	{
-        // call noise response routine.  This will return true   if the 
-        // cutoff trigger is persistent and not a spike
-//		if(!cutoff.noiseResponse()){
-//			heatShutdown = true;
-//			heatFailMode = HEATER_FAIL_HARDWARE_CUTOFF;
-//		}
-//	}	
 }
 bool connectionsErrorTriggered = false;
 void Motherboard::heaterFail(HeaterFailMode mode){
@@ -284,10 +280,15 @@ void Motherboard::errorResponse(char msg[], bool reset){
 
 enum stagger_timers{
 	STAGGER_INTERFACE,
-	STAGGER_MID,
+	STAGGER_MID, 
 	STAGGER_EX2,
 	STAGGER_EX1
 }stagger = STAGGER_INTERFACE;
+
+uint8_t Motherboard::GetErrorStatus(){
+
+	return board_status;
+}
 
 
 bool triggered = false;
@@ -304,7 +305,7 @@ void Motherboard::runMotherboardSlice() {
 			stagger = STAGGER_MID;
 		}
 	}
-        
+			   
     if(isUsingPlatform()) {
 		// manage heating loops for the HBP
 		platform_heater.manage_temperature();
@@ -336,6 +337,8 @@ void Motherboard::runMotherboardSlice() {
         // clear timeout
 		user_input_timeout.clear();
 		
+		board_status |= STATUS_HEAT_INACTIVE_SHUTDOWN;
+		
 		// alert user if heaters are not already set to 0
 		if((Extruder_One.getExtruderHeater().get_set_temperature() > 0) ||
 			(Extruder_Two.getExtruderHeater().get_set_temperature() > 0) ||
@@ -365,9 +368,6 @@ void Motherboard::runMotherboardSlice() {
 		switch (heatFailMode){
 			case HEATER_FAIL_SOFTWARE_CUTOFF:
 				interfaceBoard.errorMessage("Extruder Overheat!  Software Temp Limit Reached! Please     Shutdown or Restart");//,79);
-				break;
-			case HEATER_FAIL_HARDWARE_CUTOFF:
-				interfaceBoard.errorMessage("Extruder Overheat!  Safety Cutoff       Triggered! Please   Shutdown or Restart");//,79);
 				break;
 			case HEATER_FAIL_NOT_HEATING:
 				interfaceBoard.errorMessage("Heating Failure!    My extruders are notheating properly.   Check my connections");//,79);
@@ -402,6 +402,7 @@ void Motherboard::runMotherboardSlice() {
 		Extruder_Two.runExtruderSlice();
 		stagger = STAGGER_INTERFACE;
 	}
+
 }
 
 // reset user timeout to start from zero

@@ -529,6 +529,11 @@ bool processQueryPacket(const InPacket& from_host, OutPacket& to_host) {
 			case HOST_CMD_GET_COMMUNICATION_STATS:
 				handleGetCommunicationStats(from_host,to_host);
 				return true;
+			case HOST_CMD_BOARD_STATUS:
+				Motherboard& board = Motherboard::getBoard();
+				to_host.append8(RC_OK);
+				to_host.append8(board.GetErrorStatus());
+				return true;
 			}
 		}
 	}
@@ -573,6 +578,15 @@ sdcard::SdErrorCode startBuildFromSD() {
 		// TODO: report error
 		return e;
 	}
+	
+	// clear heater temps
+	Motherboard::getBoard().getPlatformHeater().set_target_temperature(0);
+	Motherboard::getBoard().getExtruderBoard(0).getExtruderHeater().set_target_temperature(0);
+	Motherboard::getBoard().getExtruderBoard(1).getExtruderHeater().set_target_temperature(0);
+	
+	command::reset();
+	planner::abort();
+	
 
 	currentState = HOST_STATE_BUILDING_FROM_SD;
 
@@ -664,8 +678,9 @@ bool processExtruderQueryPacket(const InPacket& from_host, OutPacket& to_host) {
 			return true;
 		case SLAVE_CMD_GET_TOOL_STATUS:
 			to_host.append8(RC_OK);
-			to_host.append8( (board.getExtruderBoard(id).getExtruderHeater().has_failed()?128:0)
+			to_host.append8((board.getExtruderBoard(id).getExtruderHeater().has_failed()?128:0)
 							| (board.getPlatformHeater().has_failed()?64:0)
+							| (board.getExtruderBoard(id).getExtruderHeater().GetFailMode())
 							| (board.getExtruderBoard(id).getExtruderHeater().has_reached_target_temperature()?1:0));
 			return true;
 		case SLAVE_CMD_GET_PID_STATE:
