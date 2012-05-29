@@ -292,7 +292,6 @@ namespace planner {
 		setMaxAxisJerk(eeprom::getEepromFixed16(eeprom_offsets::ACCELERATION_SETTINGS + acceleration_eeprom_offsets::AXIS_JERK_OFFSET + 4, DEFAULT_MAX_A_JERK), 3);
 		setMaxAxisJerk(eeprom::getEepromFixed16(eeprom_offsets::ACCELERATION_SETTINGS + acceleration_eeprom_offsets::AXIS_JERK_OFFSET + 6, DEFAULT_MAX_B_JERK), 4);
 
-
 		abort();
 
 
@@ -813,35 +812,40 @@ namespace planner {
 		block->acceleration_rate = local_acceleration_st * ACCELERATION_MAGIC;
 
 		// Determine the stop_speed for this move
-		float stop_speed = local_nominal_speed;
+		// float stop_speed = local_nominal_speed;
+		// 
+		// if ((current_speed[X_AXIS] != 0.0 || current_speed[Y_AXIS] != 0.0)) {
+		// 	float xy_speed;
+		// 	if (current_speed[X_AXIS] == 0.0)
+		// 		xy_speed = abs(current_speed[Y_AXIS]);
+		// 	else if (current_speed[Y_AXIS] == 0.0)
+		// 		xy_speed = abs(current_speed[X_AXIS]);
+		// 	else
+		// 		xy_speed = sqrt(current_speed[X_AXIS]*current_speed[X_AXIS] + current_speed[Y_AXIS]*current_speed[Y_AXIS]);
+		// 
+		// 	// (local_nominal_speed/xy_speed)*max_xy_jerk, but rearranged to minimize undeflow
+		// 	float xy_stop = (local_nominal_speed*max_xy_jerk/xy_speed);
+		// 	stop_speed = min(stop_speed, xy_stop);
+		// }
 
-		if ((current_speed[X_AXIS] != 0.0 || current_speed[Y_AXIS] != 0.0)) {
-			float xy_speed;
-			if (current_speed[X_AXIS] == 0.0)
-				xy_speed = abs(current_speed[Y_AXIS]);
-			else if (current_speed[Y_AXIS] == 0.0)
-				xy_speed = abs(current_speed[X_AXIS]);
-			else
-				xy_speed = sqrt(current_speed[X_AXIS]*current_speed[X_AXIS] + current_speed[Y_AXIS]*current_speed[Y_AXIS]);
+		// (local_nominal_speed/xy_speed)*max_xy_jerk, but rearranged to minimize undeflow
+		float stop_speed = max_xy_jerk/2;
 
-			// (local_nominal_speed/xy_speed)*max_xy_jerk, but rearranged to minimize undeflow
-			float xy_stop = (local_nominal_speed*max_xy_jerk/xy_speed);
-			stop_speed = min(stop_speed, xy_stop);
+		if (current_speed[Z_AXIS] >= 0.0001) {
+			stop_speed = min(stop_speed, axes[Z_AXIS].max_axis_jerk/2);
 		}
 
-		if (current_speed[Z_AXIS] != 0.0) {
-			stop_speed = min(stop_speed, (local_nominal_speed*axes[Z_AXIS].max_axis_jerk/abs(current_speed[Z_AXIS])));
-		}
-
-		if (current_speed[A_AXIS] != 0.0) {
-			stop_speed = min(stop_speed, (local_nominal_speed*axes[A_AXIS].max_axis_jerk/abs(current_speed[A_AXIS])));
+		if (current_speed[A_AXIS] >= 0.0001) {
+			stop_speed = min(stop_speed, axes[A_AXIS].max_axis_jerk/2);
 		}
 
 #if STEPPER_COUNT > 4
-		if (current_speed[B_AXIS] != 0.0) {
-			stop_speed = min(stop_speed, (local_nominal_speed*axes[B_AXIS].max_axis_jerk/abs(current_speed[B_AXIS])));
+		if (current_speed[B_AXIS] >= 0.0001) {
+			stop_speed = min(stop_speed, axes[B_AXIS].max_axis_jerk/2);
 		}
 #endif		
+
+		stop_speed = min(stop_speed, local_nominal_speed);
 
 		// Compute the speed trasitions, or "jerks"
 		// Start with a safe speed
@@ -849,9 +853,9 @@ namespace planner {
 
 		// Now determine the safe max entry speed for this move
 		// Skip the first block
-		if ((!block_buffer.isEmpty()) && (previous_nominal_speed > 0.0)) {
+		if ((!block_buffer.isEmpty()) && (previous_nominal_speed > 0.0001)) {
 			float jerk = sqrt(pow((current_speed[X_AXIS]-previous_speed[X_AXIS]), 2)+pow((current_speed[Y_AXIS]-previous_speed[Y_AXIS]), 2));
-			if((previous_speed[X_AXIS] != 0.0) || (previous_speed[Y_AXIS] != 0.0)) {
+			if((previous_speed[X_AXIS] > 0.0001) || (previous_speed[Y_AXIS] > 0.0001)) {
 				vmax_junction = local_nominal_speed;
 			}
 

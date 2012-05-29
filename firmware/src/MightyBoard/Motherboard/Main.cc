@@ -56,7 +56,7 @@ void reset(bool hard_reset) {
 		Motherboard& board = Motherboard::getBoard();	
         sdcard::reset();
 		utility::reset();
-		planner::abort();
+		planner::init();
 		command::reset();
 		eeprom::init();
 		steppers::reset();

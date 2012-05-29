@@ -386,8 +386,8 @@ void Motherboard::runMotherboardSlice() {
 		// disable command processing and steppers
 		host::heatShutdown();
 		command::heatShutdown();
-		planner::abort();
-        for(int i = 0; i < STEPPER_COUNT; i++)
+		planner::init();
+		for(int i = 0; i < STEPPER_COUNT; i++)
 			steppers::enableAxis(i, false);
 	}
 		       
