@@ -189,10 +189,10 @@ void setDefaultsPreheat(uint16_t eeprom_base)
  */
 void setDefaultsAcceleration()
 {
-    eeprom_write_byte((uint8_t*)(eeprom_offsets::ACCELERATION_SETTINGS + acceleration_eeprom_offsets::ACTIVE_OFFSET), _BV(ACCELERATION_INIT_BIT) | 0x01);
-    eeprom_write_word((uint16_t*)(eeprom_offsets::ACCELERATION_SETTINGS + acceleration_eeprom_offsets::ACCELERATION_RATE_OFFSET), DEFAULT_ACCELERATION);
-    
-    eeprom_write_word((uint16_t*)(eeprom_offsets::ACCELERATION_SETTINGS + acceleration_eeprom_offsets::AXIS_RATES_OFFSET + 0), DEFAULT_X_ACCELERATION);
+	eeprom_write_byte((uint8_t*)(eeprom_offsets::ACCELERATION_SETTINGS + acceleration_eeprom_offsets::ACTIVE_OFFSET), _BV(ACCELERATION_INIT_BIT) | 0x01);
+	eeprom_write_word((uint16_t*)(eeprom_offsets::ACCELERATION_SETTINGS + acceleration_eeprom_offsets::ACCELERATION_RATE_OFFSET), DEFAULT_ACCELERATION);
+
+	eeprom_write_word((uint16_t*)(eeprom_offsets::ACCELERATION_SETTINGS + acceleration_eeprom_offsets::AXIS_RATES_OFFSET + 0), DEFAULT_X_ACCELERATION);
 	eeprom_write_word((uint16_t*)(eeprom_offsets::ACCELERATION_SETTINGS + acceleration_eeprom_offsets::AXIS_RATES_OFFSET + 2), DEFAULT_Y_ACCELERATION);        
 	eeprom_write_word((uint16_t*)(eeprom_offsets::ACCELERATION_SETTINGS + acceleration_eeprom_offsets::AXIS_RATES_OFFSET + 4), DEFAULT_Z_ACCELERATION);
 	eeprom_write_word((uint16_t*)(eeprom_offsets::ACCELERATION_SETTINGS + acceleration_eeprom_offsets::AXIS_RATES_OFFSET + 6), DEFAULT_A_ACCELERATION);
