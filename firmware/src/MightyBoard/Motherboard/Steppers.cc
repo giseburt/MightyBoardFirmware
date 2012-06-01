@@ -191,6 +191,7 @@ volatile int8_t  feedrate_multiplier;
 // volatile int32_t acceleration_tick_counter;
 volatile uint8_t current_feedrate_index;
 
+bool acceleration_on;
 volatile bool is_homing;
 
 bool holdZ = false;
@@ -322,6 +323,7 @@ void init() {
 	feedrate_timer = 0;
 	feedrate_multiplier = 1;
 	current_feedrate_index = 0;
+	acceleration_on = true;
 }
 
 void abort() {
@@ -390,7 +392,7 @@ inline void recalcFeedrate() {
 		step_rate = (step_rate >> 1)&0x7fff;
 		feedrate_multiplier = 2;
 	}
-
+	
 	if(step_rate < (F_CPU/500000)) step_rate = (F_CPU/500000);
 	step_rate -= (F_CPU/500000); // Correct for minimal speed
 
@@ -543,7 +545,7 @@ bool getNextMove() {
 	if (current_block->decelerate_after > current_block->accelerate_until) {
 		if (feedrate_being_setup == 0)
 			feedrate = current_block->nominal_rate;
-
+			
 		feedrate_elements[feedrate_being_setup].steps     = current_block->decelerate_after - current_block->accelerate_until;
 		feedrate_elements[feedrate_being_setup].rate      = 0;
 		feedrate_elements[feedrate_being_setup].target    = current_block->nominal_rate;
@@ -564,7 +566,7 @@ bool getNextMove() {
 		feedrate_elements[feedrate_being_setup-1].steps     = INT16_MAX;
 		// We don't setup anything else because we limit to the target speed anyway.
 	}
-		
+
 	// unlock the block
 	current_block->flags &= ~planner::Block::Locked;
 
@@ -591,7 +593,7 @@ bool getNextMove() {
 #endif
 	is_running = true;
 	TIMSK3 = 0x02; // turn on OCR3A match interrupt
-
+	
 	return true;
 }
 
@@ -658,7 +660,7 @@ void enableAxis(uint8_t index, bool enable) {
 		case X_AXIS: 
 			_WRITE(X_ENABLE, !enable);
 			break;
-		case Y_AXIS: 
+        case Y_AXIS: 
 			_WRITE(Y_ENABLE, !enable);
 			break;
 		case Z_AXIS: 
@@ -732,6 +734,9 @@ bool IsActive(uint8_t axis){
 }
 #endif
 
+bool SetAccelerationOn(bool on){
+	acceleration_on = on;
+}
 
 bool doInterrupt() {
 	//DEBUG_PIN3.setValue(true);
@@ -739,105 +744,105 @@ bool doInterrupt() {
 		if (current_block == NULL) {
 			bool got_a_move = getNextMove();
 			if (!got_a_move) {
-			//	DEBUG_PIN3.setValue(false);
+				//DEBUG_PIN3.setValue(false);
 				return is_running;
 			}
 		}
 	
-		bool axis_active[STEPPER_COUNT];
+			bool axis_active[STEPPER_COUNT];
 
 #if defined(SINGLE_SWITCH_ENDSTOPS) && (SINGLE_SWITCH_ENDSTOPS == 1)
-		for (int i = 0; i < STEPPER_COUNT; i++){
-			axis_active[i] = IsActive(i);
-		}
+			for (int i = 0; i < STEPPER_COUNT; i++){
+				axis_active[i] = IsActive(i);
+			}
 #else		
-		//TODO: Port this to handle max/min pins = NULL and non-inverted endstops ( see old stepper interface functions)
-		//TODO: READ ENDSTOPS ALL AT ONCE
-		axis_active[X_AXIS] = (delta[X_AXIS] != 0) && !(direction[X_AXIS] ? !_READ(X_MAX) : !_READ(X_MIN));
-		axis_active[Y_AXIS] = (delta[Y_AXIS] != 0) && !(direction[Y_AXIS] ? !_READ(Y_MAX) : !_READ(Y_MIN));	
-		axis_active[Z_AXIS] = (delta[Z_AXIS] != 0) && !(direction[Z_AXIS] ? !_READ(Z_MAX) : !_READ(Z_MIN));
+			//TODO: Port this to handle max/min pins = NULL and non-inverted endstops ( see old stepper interface functions)
+			//TODO: READ ENDSTOPS ALL AT ONCE
+			axis_active[X_AXIS] = (delta[X_AXIS] != 0) && !(direction[X_AXIS] ? !_READ(X_MAX) : !_READ(X_MIN));
+			axis_active[Y_AXIS] = (delta[Y_AXIS] != 0) && !(direction[Y_AXIS] ? !_READ(Y_MAX) : !_READ(Y_MIN));	
+			axis_active[Z_AXIS] = (delta[Z_AXIS] != 0) && !(direction[Z_AXIS] ? !_READ(Z_MAX) : !_READ(Z_MIN));
 #if STEPPER_COUNT > 3
-		axis_active[A_AXIS] = (delta[A_AXIS] != 0);
+			axis_active[A_AXIS] = (delta[A_AXIS] != 0);
 #endif
 #if STEPPER_COUNT > 4
-		axis_active[B_AXIS] = (delta[B_AXIS] != 0); 
+			axis_active[B_AXIS] = (delta[B_AXIS] != 0); 
 #endif
 #endif
-		
-		for (uint8_t i = 0; i < feedrate_multiplier; i++){
-			if(axis_active[X_AXIS]){
-				counter[X_AXIS] += delta[X_AXIS] ;
-				if (counter[X_AXIS]  >= 0) {
-					_WRITE(X_STEP, true);
-					counter[X_AXIS]  -= intervals ;
-					position[X_AXIS]  += step_change[X_AXIS] ;
-					_WRITE(X_STEP, false);
-				}
-			}
-			if(axis_active[Y_AXIS])	{
-				counter[Y_AXIS] += delta[Y_AXIS] ;
-				if (counter[Y_AXIS]  >= 0) {
-					_WRITE(Y_STEP, true);
-					counter[Y_AXIS]  -= intervals ;
-					position[Y_AXIS]  += step_change[Y_AXIS] ;
-					_WRITE(Y_STEP, false);
-				}
-			}
-			if(axis_active[Z_AXIS])	{
-				counter[Z_AXIS] += delta[Z_AXIS] ;
-				if (counter[Z_AXIS]  >= 0) {
-					_WRITE(Z_STEP, true);
-					counter[Z_AXIS]  -= intervals ;
-					position[Z_AXIS]  += step_change[Z_AXIS] ;
-					_WRITE(Z_STEP, false);
-				}
-			}
-#if STEPPER_COUNT > 3
-			if(axis_active[A_AXIS]){
-				counter[A_AXIS] += delta[A_AXIS] ;
-				if (counter[A_AXIS]  >= 0) {
-					_WRITE(A_STEP, true);
-					counter[A_AXIS]  -= intervals ;
-					position[A_AXIS]  += step_change[A_AXIS] ;
-					_WRITE(A_STEP, false);
-				}
-			}
-#endif
-#if STEPPER_COUNT > 4
-			if(axis_active[B_AXIS]){
-				counter[B_AXIS] += delta[B_AXIS] ;
-				if (counter[B_AXIS]  >= 0) {
-					_WRITE(B_STEP, true);
-					counter[B_AXIS]  -= intervals ;
-					position[B_AXIS]  += step_change[B_AXIS] ;
-					_WRITE(B_STEP, false);
-				}
-			}
-#endif
-
-		}
-		intervals_remaining -= feedrate_multiplier;
-
-		if (intervals_remaining <= 0) { // should never need the < part, but just in case...
-			bool got_a_move = getNextMove();
-			if (!got_a_move) {
-				//DEBUG_PIN1.setValue(false);
-				return is_running;
-			}
-		}
-
-		if ((feedrate_steps_remaining-=feedrate_multiplier) <= 0) {
-			current_feedrate_index++;
-			prepareFeedrateIntervals();
-			feedrate_dirty = 1;
-		}
-
-		if (feedrate_changerate != 0 /* && acceleration_tick_counter-- <= 0 */) {
-			// Change our feedrate. Here it's important to note that we can over/undershoot
 			
+			for (uint8_t i = 0; i < feedrate_multiplier; i++){
+				if(axis_active[X_AXIS]){
+					counter[X_AXIS] += delta[X_AXIS] ;
+					if (counter[X_AXIS]  >= 0) {
+						_WRITE(X_STEP, true);
+						counter[X_AXIS]  -= intervals ;
+						position[X_AXIS]  += step_change[X_AXIS] ;
+						_WRITE(X_STEP, false);
+					}
+				}
+				if(axis_active[Y_AXIS])	{
+					counter[Y_AXIS] += delta[Y_AXIS] ;
+					if (counter[Y_AXIS]  >= 0) {
+						_WRITE(Y_STEP, true);
+						counter[Y_AXIS]  -= intervals ;
+						position[Y_AXIS]  += step_change[Y_AXIS] ;
+						_WRITE(Y_STEP, false);
+					}
+				}
+				if(axis_active[Z_AXIS])	{
+					counter[Z_AXIS] += delta[Z_AXIS] ;
+					if (counter[Z_AXIS]  >= 0) {
+						_WRITE(Z_STEP, true);
+						counter[Z_AXIS]  -= intervals ;
+						position[Z_AXIS]  += step_change[Z_AXIS] ;
+						_WRITE(Z_STEP, false);
+					}
+				}
+	#if STEPPER_COUNT > 3
+				if(axis_active[A_AXIS]){
+					counter[A_AXIS] += delta[A_AXIS] ;
+					if (counter[A_AXIS]  >= 0) {
+						_WRITE(A_STEP, true);
+						counter[A_AXIS]  -= intervals ;
+						position[A_AXIS]  += step_change[A_AXIS] ;
+						_WRITE(A_STEP, false);
+					}
+				}
+	#endif
+	#if STEPPER_COUNT > 4
+				if(axis_active[B_AXIS]){
+					counter[B_AXIS] += delta[B_AXIS] ;
+					if (counter[B_AXIS]  >= 0) {
+						_WRITE(B_STEP, true);
+						counter[B_AXIS]  -= intervals ;
+						position[B_AXIS]  += step_change[B_AXIS] ;
+						_WRITE(B_STEP, false);
+					}
+				}
+	#endif
+
+			}
+			intervals_remaining -= feedrate_multiplier;
+
+			if (intervals_remaining <= 0) { // should never need the < part, but just in case...
+				bool got_a_move = getNextMove();
+				if (!got_a_move) {
+					//DEBUG_PIN3.setValue(false);
+					return is_running;
+				}
+			}
+
+			if ((feedrate_steps_remaining-=feedrate_multiplier) <= 0) {
+				current_feedrate_index++;
+				prepareFeedrateIntervals();
+			feedrate_dirty = 1;
+			}
+
+		if (feedrate_changerate != 0) {
+			// Change our feedrate. Here it's important to note that we can over/undershoot
+
 			MultiU24X24toH16(feedrate, feedrate_total_time, abs(feedrate_changerate));
 			// Right here, feedrate is a temporary offset value
-			
+
 			if (feedrate_changerate > 0) {
 				// We offset up from the initial_rate
 				feedrate += feedrate_start;
@@ -855,10 +860,10 @@ bool doInterrupt() {
 				
 				// is this redundant? 
 				if (feedrate < feedrate_target) {
-					feedrate_changerate = 0;
-					feedrate = feedrate_target;
-				}
-			}
+				feedrate_changerate = 0;
+				feedrate = feedrate_target;
+			} 
+		}
 			
 			feedrate_dirty = 1;
 		}
@@ -875,63 +880,63 @@ bool doInterrupt() {
 		//TODO: Port endstop check to handle max/min pins = NULL and non-inverted endstops ( see old stepper interface functions)
 		for (int8_t i = 0; i < feedrate_multiplier && is_homing; i++){
 			is_homing = false;
-			
-			if (delta[X_AXIS] != 0){
-				counter[X_AXIS] += delta[X_AXIS];
-				if (counter[X_AXIS] >= 0) {
-					counter[X_AXIS] -= intervals;
-					bool hit_endstop = direction[X_AXIS] ? !_READ(X_MAX) : !_READ(X_MIN);
-					if (!hit_endstop) {
-						_WRITE(X_STEP, true);
+
+				if (delta[X_AXIS] != 0){
+					counter[X_AXIS] += delta[X_AXIS];
+					if (counter[X_AXIS] >= 0) {
+						counter[X_AXIS] -= intervals;
+						bool hit_endstop = direction[X_AXIS] ? !_READ(X_MAX) : !_READ(X_MIN);
+						if (!hit_endstop) {
+							_WRITE(X_STEP, true);
 						is_homing = true;
-						position[X_AXIS] += step_change[X_AXIS];
-						_WRITE(X_STEP, false);
+							position[X_AXIS] += step_change[X_AXIS];
+							_WRITE(X_STEP, false);
+						}
+					}
+				}
+				
+				if (delta[Y_AXIS] != 0){
+					counter[Y_AXIS] += delta[Y_AXIS];
+					if (counter[Y_AXIS] >= 0) {
+						counter[Y_AXIS] -= intervals;
+						bool hit_endstop = direction[Y_AXIS] ? !_READ(Y_MAX) : !_READ(Y_MIN);
+						if (!hit_endstop) {
+							_WRITE(Y_STEP, true);
+						is_homing = true;
+							position[Y_AXIS] += step_change[Y_AXIS];
+							_WRITE(Y_STEP, false);
+						}
+					}
+				}
+				
+				if (delta[Z_AXIS] != 0){
+					counter[Z_AXIS] += delta[Z_AXIS];
+					if (counter[Z_AXIS] >= 0) {
+						counter[Z_AXIS] -= intervals;
+						bool hit_endstop = direction[Z_AXIS] ? !_READ(Z_MAX) : !_READ(Z_MIN);
+						if (!hit_endstop) {
+							_WRITE(Z_STEP, true);
+						is_homing = true;
+							position[Z_AXIS] += step_change[Z_AXIS];
+							_WRITE(Z_STEP, false);
+						}
 					}
 				}
 			}
 			
-			if (delta[Y_AXIS] != 0){
-				counter[Y_AXIS] += delta[Y_AXIS];
-				if (counter[Y_AXIS] >= 0) {
-					counter[Y_AXIS] -= intervals;
-					bool hit_endstop = direction[Y_AXIS] ? !_READ(Y_MAX) : !_READ(Y_MIN);
-					if (!hit_endstop) {
-						_WRITE(Y_STEP, true);
-						is_homing = true;
-						position[Y_AXIS] += step_change[Y_AXIS];
-						_WRITE(Y_STEP, false);
-					}
-				}
-			}
-			
-			if (delta[Z_AXIS] != 0){
-				counter[Z_AXIS] += delta[Z_AXIS];
-				if (counter[Z_AXIS] >= 0) {
-					counter[Z_AXIS] -= intervals;
-					bool hit_endstop = direction[Z_AXIS] ? !_READ(Z_MAX) : !_READ(Z_MIN);
-					if (!hit_endstop) {
-						_WRITE(Z_STEP, true);
-						is_homing = true;
-						position[Z_AXIS] += step_change[Z_AXIS];
-						_WRITE(Z_STEP, false);
-					}
-				}
-			}
-		}
-			
-		// if we're done, force a sync with the planner
+			// if we're done, force a sync with the planner
 		if (!is_homing) {
 			TIMSK3 = 0x00; // turn off OCR3A match interrupt
-			planner::abort();
+				planner::abort();
 		}
 
-		//DEBUG_PIN1.setValue(false);
+		//DEBUG_PIN3.setValue(false);
 		return is_homing;
 	} else {
 		// if isRunning is false, and isHoming is false, we need to kill this timer
 		TIMSK3 = 0x00; // turn off OCR3A match interrupt
 	}
-	//DEBUG_PIN1.setValue(false);
+	//DEBUG_PIN3.setValue(false);
 	return false;
 }
 

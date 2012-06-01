@@ -81,7 +81,8 @@ void Motherboard::reset(bool hard_reset) {
 	// Initialize the host and slave UARTs
 	UART::getHostUART().enable(true);
 	UART::getHostUART().in.reset();
-    
+	
+	micros = 0;
 		
 	// Reset and configure timer 0, the piezo buzzer timer
 	// Mode: Phase-correct PWM with OCRnA (WGM2:0 = 101)
@@ -122,7 +123,7 @@ void Motherboard::reset(bool hard_reset) {
 	// TCCR2B = 0x07; // prescaler at 1/1024
 	TCCR2B = 0x04; // prescaler at 1/64 F_CPU
 	TIMSK2 = 0x01; // turn on overflow interrupt
-		
+	
 	// reset and configure timer 5, the HBP PWM timer
 	// not currently being used
 	TCCR5A = 0b00000000;  
@@ -154,32 +155,32 @@ void Motherboard::reset(bool hard_reset) {
 
 	if (hasInterfaceBoard) {
 		// Make sure our interface board is initialized
-		interfaceBoard.init();
+        interfaceBoard.init();
 
-		// start with welcome script if the first boot flag is not set
-		if(eeprom::getEeprom8(eeprom_offsets::FIRST_BOOT_FLAG, 0) == 0)
-			interfaceBoard.pushScreen(&welcomeScreen);
-		else
-			// otherwise start with the splash screen.
-			interfaceBoard.pushScreen(&splashScreen);
-
-
-		if(hard_reset)
+        // start with welcome script if the first boot flag is not set
+        if(eeprom::getEeprom8(eeprom_offsets::FIRST_BOOT_FLAG, 0) == 0)
+            interfaceBoard.pushScreen(&welcomeScreen);
+        else
+            // otherwise start with the splash screen.
+            interfaceBoard.pushScreen(&splashScreen);
+        
+        
+        if(hard_reset)
 			_delay_us(3000000);
 
 
-				// Finally, set up the interface
-		interface::init(&interfaceBoard, &lcd);
+        // Finally, set up the interface
+        interface::init(&interfaceBoard, &lcd);
 
-		interface_update_timeout.start(interfaceBoard.getUpdateRate());
-	}
-
-		// interface LEDs default to full ON
-	interfaceBlink(0,0);
-
-		// only call the piezo buzzer on full reboot start up
-		// do not clear heater fail messages, though the user should not be able to soft reboot from heater fail
-	if(hard_reset)
+        interface_update_timeout.start(interfaceBoard.getUpdateRate());
+    }
+    
+    // interface LEDs default to full ON
+    interfaceBlink(0,0);
+    
+    // only call the piezo buzzer on full reboot start up
+    // do not clear heater fail messages, though the user should not be able to soft reboot from heater fail
+    if(hard_reset)
 	{
 		// Configure the debug pins.
 		DEBUG_PIN.setDirection(true);
@@ -299,6 +300,7 @@ void Motherboard::runMotherboardSlice() {
     // update interface screen as necessary
 	if (hasInterfaceBoard) {
 		interfaceBoard.doInterrupt();
+		// stagger motherboard updates so that they do not all occur on the same loop
 		if (interface_update_timeout.hasElapsed() && (stagger == STAGGER_INTERFACE)) {
 			interfaceBoard.doUpdate();
 			interface_update_timeout.start(interfaceBoard.getUpdateRate());
@@ -387,7 +389,7 @@ void Motherboard::runMotherboardSlice() {
 		host::heatShutdown();
 		command::heatShutdown();
 		planner::init();
-		for(int i = 0; i < STEPPER_COUNT; i++)
+        for(int i = 0; i < STEPPER_COUNT; i++)
 			steppers::enableAxis(i, false);
 	}
 		       
@@ -452,13 +454,13 @@ void Motherboard::indicateError(int error_code) {
 void Motherboard::interfaceBlink(int on_time, int off_time){
 	// All incoming times are in (1 << 14) = 16384 microsecond ticks.
 	
-	if (off_time == 0) {
+	if(off_time == 0){
 		interface_blink_state = BLINK_NONE;
 		interface::setLEDs(true);
-	} else if (on_time == 0) {
+	}else if(on_time == 0){
 		interface_blink_state = BLINK_NONE;
 		interface::setLEDs(false);
-	} else {
+	} else{
 		interface_on_time = on_time;
 		interface_off_time = off_time;
 		interface_blink_state = BLINK_ON;
@@ -495,7 +497,7 @@ int interface_ovfs_remaining = 0;
 // the overflow handler is called every 256 ticks.
 #define MICROSECONDS_PER_TIMER2_OVERFLOW (clockCyclesToMicroseconds(64 * 256))
 
-void Motherboard::doMicrosInterrupt() {
+void Motherboard::UpdateMicros(){
 	micros += MICROSECONDS_PER_TIMER2_OVERFLOW;
 }
 
@@ -505,7 +507,7 @@ uint8_t blink_overflow_counter = 0;
 
 /// Timer 2 overflow interrupt (Blink LEDs and micros)
 ISR(TIMER2_OVF_vect) {
-	Motherboard::getBoard().doMicrosInterrupt();
+	Motherboard::getBoard().UpdateMicros();
 
 	if (blink_overflow_counter++ & 0x0F != 0)
 		return;

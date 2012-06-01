@@ -180,10 +180,14 @@ protected:
 
 /// Display a welcome splash screen, that removes itself when updated.
 class SplashScreen: public Screen {
+
+private:
+	bool hold_on;
 public:
+	SplashScreen();
 	micros_t getUpdateRate() {return 50L * 1000L;}
 
-
+	void SetHold(bool on);
 	void update(LiquidCrystalSerial& lcd, bool forceRedraw);
 
 	void reset();
@@ -227,21 +231,6 @@ protected:
     
 	void handleSelect(uint8_t index);
 };
-
-/// test if heaters are plugged in correctly
-/*class HeaterTestScreen: public Screen {
-public:
-	micros_t getUpdateRate() {return 50L * 1000L;}
-
-	Timeout heater_timeout;
-	bool heater_failed;
-	
-	void update(LiquidCrystalSerial& lcd, bool forceRedraw);
-
-	void reset();
-
-    void notifyButtonPressed(ButtonArray::ButtonName button);
-};*/
 
 class CancelBuildMenu: public Menu {
 public:
@@ -622,6 +611,7 @@ private:
     int8_t LEDColor;
     int8_t heatingLEDOn;
     int8_t helpOn;
+    int8_t accelerationOn;
     
 };
 
@@ -669,6 +659,7 @@ private:
     ResetSettingsMenu reset_settings;
     FilamentMenu filament;
     NozzleCalibrationScreen alignment;
+    SplashScreen splash;
     
     bool stepperEnable;
     bool blinkLED;
