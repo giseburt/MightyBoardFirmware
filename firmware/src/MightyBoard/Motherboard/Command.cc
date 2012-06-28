@@ -189,6 +189,7 @@ bool processExtruderCommandPacket() {
 		uint8_t command = command_buffer.pop();
 		uint8_t length = command_buffer.pop();
 		uint16_t temp;
+		bool pause_state = false;
 		
 		int32_t x = 0;
         int32_t y = 0;
@@ -202,9 +203,14 @@ bool processExtruderCommandPacket() {
 		switch (command) {
 		case SLAVE_CMD_SET_TEMP:
 			board.getExtruderBoard(id).getExtruderHeater().set_target_temperature(pop16());
-			if(board.getPlatformHeater().isHeating()){
+			/// if platform is actively heating and extruder is not cooling down, pause extruder
+			if(board.getPlatformHeater().isHeating() && !board.getPlatformHeater().isCooling() && !board.getExtruderBoard(id).getExtruderHeater().isCooling()){
 				check_temp_state = true;
-				board.getExtruderBoard(id).getExtruderHeater().Pause(true);}
+				board.getExtruderBoard(id).getExtruderHeater().Pause(true);
+			}  /// else ensure extruder is not paused  
+			else {
+				board.getExtruderBoard(id).getExtruderHeater().Pause(false);
+			}
 			return true;
 		// can be removed in process via host query works OK
  		case SLAVE_CMD_PAUSE_UNPAUSE:
@@ -217,12 +223,17 @@ bool processExtruderCommandPacket() {
 			board.setValve((pop8() & 0x01) != 0);
 			return true;
 		case SLAVE_CMD_SET_PLATFORM_TEMP:
-			check_temp_state = true;
 			board.setUsingPlatform(true);
 			board.getPlatformHeater().set_target_temperature(pop16());
-			// pause extruder heaters if active
-			board.getExtruderBoard(0).getExtruderHeater().Pause(true);
-			board.getExtruderBoard(1).getExtruderHeater().Pause(true);
+			// pause extruder heaters platform is heating up
+			pause_state = false;
+			if(!board.getPlatformHeater().isCooling()){
+				pause_state = true;
+			}
+			check_temp_state = pause_state;
+			board.getExtruderBoard(0).getExtruderHeater().Pause(pause_state);
+			board.getExtruderBoard(1).getExtruderHeater().Pause(pause_state);
+			
 			return true;
         // not being used with 5D
 		case SLAVE_CMD_TOGGLE_MOTOR_1:
@@ -334,7 +345,6 @@ void runCommandSlice() {
 		else if(!Motherboard::getBoard().getExtruderBoard(currentToolIndex).getExtruderHeater().isHeating()){
 			mode = READY;
 		}else if( Motherboard::getBoard().getExtruderBoard(currentToolIndex).getExtruderHeater().has_reached_target_temperature()){
-			Motherboard::getBoard().errorResponse("target temp reached."); 
             mode = READY;
 		}
 	}
@@ -542,7 +552,7 @@ void runCommandSlice() {
 					// then record it to the eeprom.
 					for (uint8_t i = 0; i < STEPPER_COUNT; i++) {
 						if ( axes & (1 << i) ) {
-							uint16_t offset = eeprom_offsets::AXIS_HOME_POSITIONS + 4*i;
+							uint16_t offset = eeprom_offsets::AXIS_HOME_POSITIONS_STEPS + 4*i;
 							uint32_t position = steppers::getPosition()[i];
 							cli();
 							eeprom_write_block(&position, (void*) offset, 4);
@@ -561,7 +571,7 @@ void runCommandSlice() {
 
 					for (uint8_t i = 0; i < STEPPER_COUNT; i++) {
 						if ( axes & (1 << i) ) {
-							uint16_t offset = eeprom_offsets::AXIS_HOME_POSITIONS + 4*i;
+							uint16_t offset = eeprom_offsets::AXIS_HOME_POSITIONS_STEPS + 4*i;
 							cli();
 							eeprom_read_block(&(newPoint[i]), (void*) offset, 4);
 							sei();

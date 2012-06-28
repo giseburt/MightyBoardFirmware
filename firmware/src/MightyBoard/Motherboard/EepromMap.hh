@@ -21,34 +21,63 @@
 
 #include <stdint.h>
 
+/** EEPROM storage offsets for ??? data */
 namespace cooler_eeprom_offsets{
 	const static uint16_t ENABLE_OFFSET   =     0;
 	const static uint16_t SETPOINT_C_OFFSET  =  1;
 }
 
+/** EEPROM storage offsets for PID data */
 namespace pid_eeprom_offsets{
 	const static uint16_t P_TERM_OFFSET = 0;
 	const static uint16_t I_TERM_OFFSET = 2;
 	const static uint16_t D_TERM_OFFSET = 4;
 }
 
-/// mm offsets 
-/// XDUAL: 152.362
-/// XSINGLE: 152.362
-/// Y: 75.218
-
-/// steps per mm (from replicator.xml in RepG/machines)
-/// XY : 94.139704
-/// Z : 400
-
+/** EEPROM storage offsets for distance delta between toolheads
+ *  and the ideal 'center' of the toolhead system, in steps
+ */
 namespace replicator_axis_offsets{
-	const static uint32_t DUAL_X_OFFSET = 14343;
-	const static uint32_t SINGLE_X_OFFSET = 14343;
-	const static uint32_t Y_OFFSET = 7081;
+	const static uint32_t DUAL_X_OFFSET_STEPS = 14309;
+	const static uint32_t SINGLE_X_OFFSET_STEPS = 14309;
+	const static uint32_t DUAL_Y_OFFSET_STEPS = 7060;
+	const static uint32_t SINGLE_Y_OFFSET_STEPS = 6778;
+	/// Footnote:
+	/// mm offsets
+	/// XDUAL: 152mm,
+	/// XSINGLE: 152mm,
+	/// Y: 75mm
+	/// YSINGLE: 72mm
+
+	/// steps per mm (from replicator.xml in RepG/machines)
+	/// XY : 94.139704
+	/// Z : 400
+
 }
 
+namespace replicator_axis_lengths{
+	// storing half lengths for X and Y axes because 0,0 is center of build platform.
+	// so we can move +- 1/2 total axis length
+	const static uint32_t axis_lengths[5] = {10685, 69966, 60000, 9627520, 9627520};
+	
+	/// Footnote:
+	/// mm offsets
+	/// X AXIS: 227mm = +-113.5mm,
+	/// Y AXIS: 148mm = +-74mm,
+	/// Z AXIS: 150mm
+	/// AB AXIS: 100000mm
+
+	/// steps per mm (from replicator.xml in RepG/machines)
+	/// XY : 94.139704
+	/// Z : 400
+	/// AB : 96.27520187
+}
+
+/**
+ * structure define eeprom map for storing toolhead specific EEPROM
+ * values. This is a sub-map of EEPROM offsets
+ */
 namespace toolhead_eeprom_offsets {
-//// Start of map
 //// Uninitialized memory is 0xff.  0xff should never
 //// be used as a valid value for initialized memory!
 
@@ -77,6 +106,10 @@ const static uint16_t COOLING_FAN_SETTINGS 	= 	0x001A;
 // TOTAL MEMORY SIZE PER TOOLHEAD = 28 bytes
 } 
 
+/**
+ * structure to define the general EEPROM map for storing all kinds
+ * of data onboard the bot
+ */
 namespace eeprom_offsets {
 /// Firmware Version, low byte: 1 byte
 const static uint16_t VERSION_LOW				= 0x0000;
@@ -98,7 +131,7 @@ const static uint16_t DIGI_POT_SETTINGS			= 0x0006;
 /// axis home direction (1 byte)
 const static uint16_t AXIS_HOME_DIRECTION 		= 0x000C;
 /// Default locations for the axis in step counts: 5 x 32 bit = 20 bytes
-const static uint16_t AXIS_HOME_POSITIONS		= 0x000E;
+const static uint16_t AXIS_HOME_POSITIONS_STEPS	= 0x000E;
 /// Name of this machine: 16 bytes (16 bytes extra buffer) 
 const static uint16_t MACHINE_NAME				= 0x0022;
 /// Tool count : 2 bytes
@@ -113,9 +146,8 @@ const static uint16_t THERM_TABLE				= 0x0074;
 const static uint16_t T0_DATA_BASE				= 0x0100;
 // Toolhead 0 data: 28 bytes (see above)
 const static uint16_t T1_DATA_BASE				= 0x011C;
-/// axis lengths (mm) (6 bytes)
-const static uint16_t AXIS_LENGTHS				= 0x0138;
-/// 2 bytes padding
+/// unused 8 bytes								= 0x0138;
+
 /// Light Effect table. 3 Bytes x 3 entries
 const static uint16_t LED_STRIP_SETTINGS		= 0x0140;
 /// Buzz Effect table. 4 Bytes x 3 entries
@@ -133,37 +165,40 @@ const static uint16_t TOOLHEAD_OFFSET_SETTINGS = 0x0162;
 /// 10 bytes axis acceleration rates, 8 bytes axis jerk 
 const static uint16_t ACCELERATION_SETTINGS     = 0x016E;
 /// 2 bytes bot status info bytes
-const static uint16_t BOT_STATUS_BYTES = 0x0188;
+const static uint16_t BOT_STATUS_BYTES = 0x018A;
+/// axis lengths XYZ AB 5*32bit = 20 bytes
+const static uint16_t AXIS_LENGTHS				= 0x018C;
+
 
 /// start of free space
-const static uint16_t FREE_EEPROM_STARTS        = 0x018A;
+const static uint16_t FREE_EEPROM_STARTS        = 0x01A0;
 
 } 
 
 
-#define DEFAULT_ACCELERATION   3500 // mm/s/s
-#define DEFAULT_X_ACCELERATION 3500 // mm/s/s
-#define DEFAULT_Y_ACCELERATION 3500 // mm/s/s
+#define DEFAULT_ACCELERATION   3000 // mm/s/s
+#define DEFAULT_X_ACCELERATION 3000 // mm/s/s
+#define DEFAULT_Y_ACCELERATION 3000 // mm/s/s
 #define DEFAULT_Z_ACCELERATION 1000 // mm/s/s
-#define DEFAULT_A_ACCELERATION 2000 // mm/s/s
-#define DEFAULT_B_ACCELERATION 2000 // mm/s/s
+#define DEFAULT_A_ACCELERATION 3000 // mm/s/s
+#define DEFAULT_B_ACCELERATION 3000 // mm/s/s
 
 #define DEFAULT_MAX_XY_JERK 20.0 // ms/s 
 #define DEFAULT_MAX_Z_JERK 1.0 // mm/s
-#define DEFAULT_MAX_A_JERK 5.0 // mm/s
-#define DEFAULT_MAX_B_JERK 5.0 // mm/s   
+#define DEFAULT_MAX_A_JERK 15.0 // mm/s
+#define DEFAULT_MAX_B_JERK 15.0 // mm/s   
 
 #define DEFAULT_MIN_SPEED 15 // mm/s
 
-#define ACCELERATION_INIT_BIT 5
+#define ACCELERATION_INIT_BIT 7
 
 namespace acceleration_eeprom_offsets{
 	const static uint16_t ACTIVE_OFFSET	= 0x00;
 	const static uint16_t ACCELERATION_RATE_OFFSET = 0x02;
 	const static uint16_t AXIS_RATES_OFFSET = 0x04;
 	const static uint16_t AXIS_JERK_OFFSET = 0x0E;
-	const static uint16_t MINIMUM_SPEED = 0x16;
-	const static uint16_t DEFAULTS_FLAG = 0x18;
+	const static uint16_t MINIMUM_SPEED = 0x18;
+	const static uint16_t DEFAULTS_FLAG = 0x1A;
 }
 
 // buzz on/off settings
@@ -174,6 +209,8 @@ namespace buzz_eeprom_offsets{
 
 }
 
+/** blink/LED EERROM offset values */
+
 //Offset table for the blink entries. Each entry is an R,G,B entry
 namespace blink_eeprom_offsets{
 	const static uint16_t BASIC_COLOR_OFFSET	= 0x00;
@@ -181,6 +218,8 @@ namespace blink_eeprom_offsets{
 	const static uint16_t CUSTOM_COLOR_OFFSET 	= 0x04;
 }
 
+
+/** thermal EERROM offset values and on/off settings for each heater */
 namespace therm_eeprom_offsets{
 	const static uint16_t THERM_R0_OFFSET                   = 0x00;
 	const static uint16_t THERM_T0_OFFSET                   = 0x04;
@@ -188,7 +227,7 @@ namespace therm_eeprom_offsets{
 	const static uint16_t THERM_DATA_OFFSET                 = 0x10;
 }
 
-// preheat values and on/off settings for each heater
+/** preheat EERROM offset values and on/off settings for each heater */
 namespace preheat_eeprom_offsets{
 	const static uint16_t PREHEAT_RIGHT_OFFSET                = 0x00;
 	const static uint16_t PREHEAT_LEFT_OFFSET                = 0x02;
@@ -196,7 +235,9 @@ namespace preheat_eeprom_offsets{
     const static uint16_t PREHEAT_ON_OFF_OFFSET             = 0x06;
 }
 
-// mask to set on/off settings for preheat
+/**
+ * mask to set on/off settings for preheat
+ */
 enum HeatMask{
     HEAT_MASK_PLATFORM = 0,
     HEAT_MASK_LEFT = 1,
@@ -210,7 +251,9 @@ const static uint16_t EEPROM_SIZE = 0x0200;
 const int MAX_MACHINE_NAME_LEN = 16;
 
 
-// EXTRA_FEATURES
+/**
+ * EXTRA_FEATURES Misc eeprom features
+ */
 enum {
 	EF_SWAP_MOTOR_CONTROLLERS	= 1 << 0,
 	EF_USE_BACKOFF			= 1 << 1,
@@ -234,7 +277,9 @@ enum {
 	EF_ACTIVE_1				= 1 << 15	// Set to 0 if EF word is valid
 };
 
-// This is the set of flags for the Toolhead Features memory
+/**
+ * This is the set of flags for the Toolhead Features memory
+ */
 enum {
         HEATER_0_PRESENT        = 1 << 0,
         HEATER_0_THERMISTOR     = 1 << 1,
@@ -254,7 +299,8 @@ enum {
 };
 
 
-const static uint16_t EF_DEFAULT = 0x4084;
+
+//const static uint16_t EF_DEFAULT = 0x4084;
 
 
 
@@ -269,6 +315,6 @@ namespace eeprom {
     bool isSingleTool();
     void setDefaultsAcceleration();
     void storeToolheadToleranceDefaults();
-    void setAxisHomePositions();
+    void setDefaultAxisHomePositions();
 }
 #endif // EEPROMMAP_HHe

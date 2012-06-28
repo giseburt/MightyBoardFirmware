@@ -149,7 +149,7 @@ namespace planner {
 	void setMaxAxisJerk(float jerk, uint8_t axis);
 
 	void setMinimumPlannerSpeed(float speed);
-
+	void setAxisMaxLength(int32_t length, uint8_t axis, bool max);
 	void setAcceleration(int32_t acceleration);
 	void setAxisAcceleration(int32_t new_acceleration, uint8_t axis);
 #ifdef CENTREPEDAL
@@ -173,6 +173,7 @@ namespace planner {
 	/// Change active tool.  Applies offsets to tool for nozzle separation
 	void changeToolIndex(uint8_t tool);
 
+	
 	void runStepperPlannerSlice();
 	bool planNextMove(Point& target, const int32_t us_per_step, const Point& steps);
 	void setAccelerationOn(bool on);

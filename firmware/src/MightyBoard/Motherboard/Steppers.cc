@@ -23,6 +23,7 @@
 #include "StepperPorts.hh"
 #include "Eeprom.hh"
 #include "EepromMap.hh"
+#include "stdio.h"
 
 namespace steppers {
 
@@ -273,6 +274,11 @@ void InitPins(){
 		}
 		
 		// there are no endstops for the extruder axes
+		
+		// set digi pots to stored default values
+		for(int i = 0; i < STEPPER_COUNT; i++){
+			digi_pots[i].init(i);
+		}
 }
 
 void ResetCounters() {
@@ -298,10 +304,6 @@ void reset(){
 void init() {
 	is_running = false;
 	is_homing = false;
-	
-	for(int i = 0; i < STEPPER_COUNT; i++){
-		digi_pots[i].init(i);
-	}
 	
 	InitPins();
 	
@@ -381,7 +383,7 @@ inline void recalcFeedrate() {
 	uint32_t step_rate = feedrate;
 	
 	feedrate_multiplier = 1;
-  if(step_rate > MAX_STEP_FREQUENCY) step_rate = MAX_STEP_FREQUENCY;
+	if(step_rate > MAX_STEP_FREQUENCY) step_rate = MAX_STEP_FREQUENCY;
 
 	// Scale the step_rate, multi-stepping will be automatic
 	if(step_rate > 20000) { // If steprate > 20kHz >> step 4 times
@@ -543,7 +545,7 @@ bool getNextMove() {
 
 	// setup plateau
 	if (current_block->decelerate_after > current_block->accelerate_until) {
-		if (feedrate_being_setup == 0)
+		if (feedrate_being_setup == 0) // we didn't have an acceleration phase
 			feedrate = current_block->nominal_rate;
 			
 		feedrate_elements[feedrate_being_setup].steps     = current_block->decelerate_after - current_block->accelerate_until;
@@ -554,19 +556,20 @@ bool getNextMove() {
 
 	// setup deceleration
 	if (current_block->decelerate_after < current_block->step_event_count) {
-		if (feedrate_being_setup == 0)
-			feedrate = current_block->nominal_rate;
+		if (feedrate_being_setup == 0) // we didn't have an acceleration or plateau phase
+			feedrate = current_block->initial_rate; // with no plateau, the nominal rate may never be reached
 
 		// To prevent "falling off the end" we will say we have a "bazillion" steps left...
 		feedrate_elements[feedrate_being_setup].steps     = INT16_MAX; //current_block->step_event_count - current_block->decelerate_after;
 		feedrate_elements[feedrate_being_setup].rate      = -current_block->acceleration_rate;
 		feedrate_elements[feedrate_being_setup].target    = current_block->final_rate;
+	
 	} else {
 		// and in case there wasn't a deceleration phase, we'll do the same for whichever phase was last...
 		feedrate_elements[feedrate_being_setup-1].steps     = INT16_MAX;
 		// We don't setup anything else because we limit to the target speed anyway.
 	}
-
+	
 	// unlock the block
 	current_block->flags &= ~planner::Block::Locked;
 
@@ -738,13 +741,13 @@ bool SetAccelerationOn(bool on){
 	acceleration_on = on;
 }
 
+
 bool doInterrupt() {
-	//DEBUG_PIN3.setValue(true);
+	
 	if (is_running) {
 		if (current_block == NULL) {
 			bool got_a_move = getNextMove();
 			if (!got_a_move) {
-				//DEBUG_PIN3.setValue(false);
 				return is_running;
 			}
 		}
@@ -826,7 +829,6 @@ bool doInterrupt() {
 			if (intervals_remaining <= 0) { // should never need the < part, but just in case...
 				bool got_a_move = getNextMove();
 				if (!got_a_move) {
-					//DEBUG_PIN3.setValue(false);
 					return is_running;
 				}
 			}
@@ -834,12 +836,12 @@ bool doInterrupt() {
 			if ((feedrate_steps_remaining-=feedrate_multiplier) <= 0) {
 				current_feedrate_index++;
 				prepareFeedrateIntervals();
-			feedrate_dirty = 1;
+				feedrate_dirty = 1;
 			}
 
 		if (feedrate_changerate != 0) {
 			// Change our feedrate. Here it's important to note that we can over/undershoot
-
+			 
 			MultiU24X24toH16(feedrate, feedrate_total_time, abs(feedrate_changerate));
 			// Right here, feedrate is a temporary offset value
 
@@ -860,10 +862,10 @@ bool doInterrupt() {
 				
 				// is this redundant? 
 				if (feedrate < feedrate_target) {
-				feedrate_changerate = 0;
-				feedrate = feedrate_target;
-			} 
-		}
+					feedrate_changerate = 0;
+					feedrate = feedrate_target;
+				} 
+			}
 			
 			feedrate_dirty = 1;
 		}
@@ -874,7 +876,6 @@ bool doInterrupt() {
 		
 		feedrate_total_time += feedrate_timer;
 		
-		//DEBUG_PIN1.setValue(false);
 		return is_running;
 	} else if (is_homing) {
 		//TODO: Port endstop check to handle max/min pins = NULL and non-inverted endstops ( see old stepper interface functions)
@@ -888,7 +889,7 @@ bool doInterrupt() {
 						bool hit_endstop = direction[X_AXIS] ? !_READ(X_MAX) : !_READ(X_MIN);
 						if (!hit_endstop) {
 							_WRITE(X_STEP, true);
-						is_homing = true;
+							is_homing = true;
 							position[X_AXIS] += step_change[X_AXIS];
 							_WRITE(X_STEP, false);
 						}
@@ -902,7 +903,7 @@ bool doInterrupt() {
 						bool hit_endstop = direction[Y_AXIS] ? !_READ(Y_MAX) : !_READ(Y_MIN);
 						if (!hit_endstop) {
 							_WRITE(Y_STEP, true);
-						is_homing = true;
+							is_homing = true;
 							position[Y_AXIS] += step_change[Y_AXIS];
 							_WRITE(Y_STEP, false);
 						}
@@ -916,7 +917,7 @@ bool doInterrupt() {
 						bool hit_endstop = direction[Z_AXIS] ? !_READ(Z_MAX) : !_READ(Z_MIN);
 						if (!hit_endstop) {
 							_WRITE(Z_STEP, true);
-						is_homing = true;
+							is_homing = true;
 							position[Z_AXIS] += step_change[Z_AXIS];
 							_WRITE(Z_STEP, false);
 						}
@@ -930,13 +931,11 @@ bool doInterrupt() {
 				planner::abort();
 		}
 
-		//DEBUG_PIN3.setValue(false);
 		return is_homing;
 	} else {
 		// if isRunning is false, and isHoming is false, we need to kill this timer
 		TIMSK3 = 0x00; // turn off OCR3A match interrupt
 	}
-	//DEBUG_PIN3.setValue(false);
 	return false;
 }
 

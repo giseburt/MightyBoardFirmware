@@ -34,8 +34,9 @@
 #include "Errors.hh"
 #include <avr/eeprom.h>
 #include <util/delay.h>
+#include "Menu_locales.hh"
 
-
+#define MICROS_INTERVAL 128
 
 
 /// Instantiate static motherboard instance
@@ -117,20 +118,20 @@ void Motherboard::reset(bool hard_reset) {
 	OCR3A = 0;
 	TIMSK3 = 0x00; // turn off OCR3A match interrupt
 	
-	// Reset and configure timer 2, the debug LED flasher and microsecond timer.
-	// If you change any of this, you must change the microsecond calculations below.
-	TCCR2A = 0x01; // CTC
-	// TCCR2B = 0x07; // prescaler at 1/1024
-	TCCR2B = 0x04; // prescaler at 1/64 F_CPU
-	TIMSK2 = 0x01; // turn on overflow interrupt
+	// Reset and configure timer 2, the microsecond timer and debug LED flasher timer.
+	TCCR2A = 0x02; /// CTC
+	TCCR2B = 0x02; /// prescaler at 1/8
+	OCR2A = MICROS_INTERVAL;  // TODO: update PWM settings to make overflowtime adjustable if desired : currently interupting on overflow
+	OCR2B = 0;
+	TIMSK2 = 0x02; // turn on OCR2A match interrupt
+
 	
-	// reset and configure timer 5, the HBP PWM timer
-	// not currently being used
-	TCCR5A = 0b00000000;  
-	TCCR5B = 0b00000010; /// set to PWM mode
-	OCR5A = 0;
+	// reset and configure timer 5 - not currently being used
+	TCCR5A = 0x00;  
+	TCCR5B = 0x09;
+	OCR5A =  0;
 	OCR5B = 0;
-	TIMSK5 = 0b00000000; // no interrupts needed
+	TIMSK5 = 0x0; 
 	
 	// reset and configure timer 1, the Extruder Two PWM timer
 	// Mode: Phase-correct PWM with OCRnA(WGM3:0 = 1011), cycle freq= 976 Hz
@@ -295,6 +296,8 @@ uint8_t Motherboard::GetErrorStatus(){
 bool triggered = false;
 // main motherboard loop
 void Motherboard::runMotherboardSlice() {
+	
+	
     
     // check for user button press
     // update interface screen as necessary
@@ -345,7 +348,7 @@ void Motherboard::runMotherboardSlice() {
 		if((Extruder_One.getExtruderHeater().get_set_temperature() > 0) ||
 			(Extruder_Two.getExtruderHeater().get_set_temperature() > 0) ||
 			(platform_heater.get_set_temperature() > 0)){
-				interfaceBoard.errorMessage("Heaters shutdown    due to inactivity");//37
+				interfaceBoard.errorMessage(HEATER_INACTIVITY_MSG);//37
 				startButtonWait();
                 // turn LEDs blue
 				RGB_LED::setColor(0,0,255, true);
@@ -369,16 +372,16 @@ void Motherboard::runMotherboardSlice() {
 		/// error message
 		switch (heatFailMode){
 			case HEATER_FAIL_SOFTWARE_CUTOFF:
-				interfaceBoard.errorMessage("Extruder Overheat!  Software Temp Limit Reached! Please     Shutdown or Restart");//,79);
+				interfaceBoard.errorMessage(HEATER_FAIL_SOFTWARE_CUTOFF_MSG);//,79);
 				break;
 			case HEATER_FAIL_NOT_HEATING:
-				interfaceBoard.errorMessage("Heating Failure!    My extruders are notheating properly.   Check my connections");//,79);
+				interfaceBoard.errorMessage(HEATER_FAIL_NOT_HEATING_MSG);//,79);
 				break;
 			case HEATER_FAIL_DROPPING_TEMP:
-				interfaceBoard.errorMessage("Heating Failure!    My extruders are    losing temperature. Check my connections");//,79);
+				interfaceBoard.errorMessage(HEATER_FAIL_DROPPING_TEMP_MSG);//,79);
 				break;
 			case HEATER_FAIL_NOT_PLUGGED_IN:
-				interfaceBoard.errorMessage("Heater Error!       My temperature readsare failing! Please Check my connections");//,79);
+				interfaceBoard.errorMessage(HEATER_FAIL_NOT_PLUGGED_IN_MSG);//,79);
                 startButtonWait();
                 heatShutdown = false;
                 return;
@@ -388,7 +391,7 @@ void Motherboard::runMotherboardSlice() {
 		// disable command processing and steppers
 		host::heatShutdown();
 		command::heatShutdown();
-		planner::init();
+		planner::abort();
         for(int i = 0; i < STEPPER_COUNT; i++)
 			steppers::enableAxis(i, false);
 	}
@@ -404,6 +407,8 @@ void Motherboard::runMotherboardSlice() {
 		Extruder_Two.runExtruderSlice();
 		stagger = STAGGER_INTERFACE;
 	}
+	
+	
 
 }
 
@@ -412,11 +417,18 @@ void Motherboard::resetUserInputTimeout(){
 	user_input_timeout.start(USER_INPUT_TIMEOUT);
 }
 
+void Motherboard::UpdateMicros(){
+	micros += MICROS_INTERVAL;//_IN_MICROSECONDS;
 
-/// Timer one comparator match interrupt
+}
+
+
+/// Timer three comparator match interrupt
 ISR(TIMER3_COMPA_vect) {
 	Motherboard::getBoard().doInterrupt();
 }
+
+
 
 /// Number of times to blink the debug LED on each cycle
 volatile uint8_t blink_count = 0;
@@ -487,31 +499,18 @@ int blinked_so_far = 0;
 /// Number of overflows remaining on the current overflow blink cycle
 int interface_ovfs_remaining = 0;
 
-// A alittle setup for the microsecond clock
-// Taken graciously from Arduino, and this Wiring -RobG
+uint16_t blink_overflow_counter = 0;
 
-#define clockCyclesPerMicrosecond() ( F_CPU / 1000000L )
-#define clockCyclesToMicroseconds(a) ( (a) / clockCyclesPerMicrosecond() )
-
-// the prescaler is set so that timer0 ticks every 64 clock cycles, and the
-// the overflow handler is called every 256 ticks.
-#define MICROSECONDS_PER_TIMER2_OVERFLOW (clockCyclesToMicroseconds(64 * 256))
-
-void Motherboard::UpdateMicros(){
-	micros += MICROSECONDS_PER_TIMER2_OVERFLOW;
-}
-
-// We need to adjust the blink timing to once every 16 interrupts
-// so we use this counter, and let it overflow naturally.
-uint8_t blink_overflow_counter = 0;
-
-/// Timer 2 overflow interrupt (Blink LEDs and micros)
-ISR(TIMER2_OVF_vect) {
-	Motherboard::getBoard().UpdateMicros();
-
-	if (blink_overflow_counter++ & 0x0F != 0)
-		return;
+/// Timer 2 overflow interrupt
+ISR(TIMER2_COMPA_vect) {
 	
+	Motherboard::getBoard().UpdateMicros();
+	
+	if(blink_overflow_counter++ <= 0x080)
+			return;
+	
+	blink_overflow_counter = 0;
+			
 	/// Debug LEDS on Motherboard
 	if (blink_ovfs_remaining > 0) {
 		blink_ovfs_remaining--;
@@ -551,6 +550,7 @@ ISR(TIMER2_OVF_vect) {
 			interface::setLEDs(false);
 		}
 	} 
+
 }
 
 // piezo buzzer update
