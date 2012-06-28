@@ -129,16 +129,24 @@ if (os.environ.has_key('AVR_TOOLS_PATH')):
 	avr_tools_path = os.environ['AVR_TOOLS_PATH']
 elif (os.environ.has_key('AVR32_HOME')):
 	avr_tools_path = os.environ['AVR32_HOME'] + '/bin'
-	avr_tools_conf =  os.environ['AVR32_HOME'] + "/etc/avrdude.conf"
+	avrdude_conf =  os.environ['AVR32_HOME'] + "/etc/avrdude.conf"
 else:
 	lines = os.popen('/usr/bin/which avr-gcc').readlines()
 	if(len(lines) > 0):
 		avr_tools_path = dirname(lines[0])
-		avr_tools_conf = "/etc/avrdude.conf"
+		avrdude_conf = dirname(lines[0])+"/../etc/avrdude.conf"
 	else: 
 		print "which gcc failed. avr-gcc path not autodetected"
 		print "set AVR32_HOME or update 'which' and avr-gcc"
 		exit()
+
+if (os.environ.has_key('AVRDUDE_PATH')):
+	avrdude_path = os.environ['AVRDUDE_PATH']
+else:
+	avrdude_path = avr_tools_path
+
+if (os.environ.has_key('AVRDUDE_CONF')):
+	avrdude_conf = os.environ['AVRDUDE_CONF']
 
 if (fived == 'true'):
 	flags.append('-DFOURTH_STEPPER=1')
@@ -162,9 +170,9 @@ env.Append(BUILDERS={'Hex':Builder(action=avr_tools_path+"/avr-objcopy -O ihex -
 env.Elf(elf_name, objs) 
 env.Hex(hex_name, elf_name)
 
-avrdude = avr_tools_path+"/avrdude"
+avrdude = avrdude_path+"/avrdude"
 avrdude_flags = "-F -V -p "+mcu.replace("atmega","m")
-avrdude_flags = avrdude_flags + " -C "+avr_tools_conf
+avrdude_flags = avrdude_flags + " -C "+avrdude_conf
 avrdude_flags = avrdude_flags + " -P "+upload_port
 avrdude_flags = avrdude_flags + " -c "+upload_prog
 avrdude_flags = avrdude_flags + " -b "+upload_baud
