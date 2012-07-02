@@ -36,7 +36,7 @@
 #include <util/delay.h>
 #include "Menu_locales.hh"
 
-#define MICROS_INTERVAL 128
+#define MICROS_INTERVAL 100
 
 
 /// Instantiate static motherboard instance
@@ -121,7 +121,7 @@ void Motherboard::reset(bool hard_reset) {
 	// Reset and configure timer 2, the microsecond timer and debug LED flasher timer.
 	TCCR2A = 0x02; /// CTC
 	TCCR2B = 0x02; /// prescaler at 1/8
-	OCR2A = MICROS_INTERVAL;  // TODO: update PWM settings to make overflowtime adjustable if desired : currently interupting on overflow
+	OCR2A = MICROS_INTERVAL*2; // 16MHz / 8 (prescaler) makes a 2MHz resolution. Count 2x for each ms.
 	OCR2B = 0;
 	TIMSK2 = 0x02; // turn on OCR2A match interrupt
 
@@ -296,11 +296,8 @@ uint8_t Motherboard::GetErrorStatus(){
 bool triggered = false;
 // main motherboard loop
 void Motherboard::runMotherboardSlice() {
-	
-	
-    
-    // check for user button press
-    // update interface screen as necessary
+	// check for user button press
+	// update interface screen as necessary
 	if (hasInterfaceBoard) {
 		interfaceBoard.doInterrupt();
 		// stagger motherboard updates so that they do not all occur on the same loop
@@ -310,16 +307,16 @@ void Motherboard::runMotherboardSlice() {
 			stagger = STAGGER_MID;
 		}
 	}
-			   
-    if(isUsingPlatform()) {
+
+	if(isUsingPlatform()) {
 		// manage heating loops for the HBP
 		platform_heater.manage_temperature();
 	}
-	
-    // if waiting on button press
+
+		// if waiting on button press
 	if(buttonWait)
 	{
-        // if user presses enter
+				// if user presses enter
 		if (interfaceBoard.buttonPushed()) {
 			// set interface LEDs to solid
 			interfaceBlink(0,0);
@@ -332,11 +329,11 @@ void Motherboard::runMotherboardSlice() {
 				host::stopBuild();
 			triggered = false;
 		}
-		
+
 	}
 	
 	// if no user input for USER_INPUT_TIMEOUT, shutdown heaters and warn user
-    // don't do this if a heat failure has occured ( in this case heaters are already shutdown and separate error messaging used)
+	// don't do this if a heat failure has occured ( in this case heaters are already shutdown and separate error messaging used)
 	if(user_input_timeout.hasElapsed() && !heatShutdown && (host::getHostState() != host::HOST_STATE_BUILDING_FROM_SD) && (host::getHostState() != host::HOST_STATE_BUILDING))
 	{
         // clear timeout
@@ -501,7 +498,7 @@ int interface_ovfs_remaining = 0;
 
 uint16_t blink_overflow_counter = 0;
 
-/// Timer 2 overflow interrupt
+/// Timer 2 compare A interrupt
 ISR(TIMER2_COMPA_vect) {
 	
 	Motherboard::getBoard().UpdateMicros();

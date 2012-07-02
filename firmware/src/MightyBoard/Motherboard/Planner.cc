@@ -684,8 +684,8 @@ namespace planner {
 		position = target;
 	}
 
-#define MIN_US_PER_STEP (1000000L/MAX_STEP_FREQUENCY)
-
+#define MIN_MS_PER_STEP (1000000L/MAX_STEP_FREQUENCY)
+#define MAX_MS_PER_STEP (1000000L/MIN_STEP_FREQUENCY)
 	///
 	bool planNextMove(Point& target, const int32_t us_per_step_in, const Point& steps)
 	{
@@ -697,9 +697,12 @@ namespace planner {
 		
 		uint32_t us_per_step = us_per_step_in;
 
-		// Make sure we adhere to the stepper MAX_STEP_FREQUENCY when planning
-		if (us_per_step < MIN_US_PER_STEP) {
-			us_per_step = MIN_US_PER_STEP;
+		// Make sure we adhere to the stepper MAX_STEP_FREQUENCY and MIN_STEP_FREQUENCY when planning
+		if (us_per_step < MIN_MS_PER_STEP) {
+			us_per_step = MIN_MS_PER_STEP;
+		}
+		else if (us_per_step > MAX_MS_PER_STEP) {
+			us_per_step = MAX_MS_PER_STEP;
 		}
 
 		float delta_mm[STEPPER_COUNT];
@@ -797,6 +800,9 @@ namespace planner {
 		float local_nominal_speed = mm_per_second; // (mm/sec) Always > 0
 		block->nominal_rate = steps_per_second; // (step/sec) Always > 0
 
+		// The stop speed is the lesser of the minimum_planner_speed or the local_nominal_speed
+		float local_stop_speed = min(minimum_planner_speed, local_nominal_speed);
+
 		float current_speed[STEPPER_COUNT];
 		for(int i=0; i < STEPPER_COUNT; i++) {
 			current_speed[i] = delta_mm[i] * inverse_second;
@@ -817,34 +823,33 @@ namespace planner {
 
 		
 		// Compute the speed trasitions, or "jerks"
-		// The default value the junction speed is the minimum_planner_speed (or local_nominal_speed if it is less than the minimum_planner_speed)
-		float vmax_junction = min(minimum_planner_speed, local_nominal_speed); 
+		// The default value the junction speed is the stop speed
+		float vmax_junction = local_stop_speed; 
 		
 		if ((!block_buffer.isEmpty()) && (previous_nominal_speed > 0.0001)) {
-			   float jerk = sqrt(pow((current_speed[X_AXIS]-previous_speed[X_AXIS]), 2)+pow((current_speed[Y_AXIS]-previous_speed[Y_AXIS]), 2));
+			float jerk = sqrt(pow((current_speed[X_AXIS]-previous_speed[X_AXIS]), 2)+pow((current_speed[Y_AXIS]-previous_speed[Y_AXIS]), 2));
 			if((abs(previous_speed[X_AXIS]) > 0.0001) || (abs(previous_speed[Y_AXIS]) > 0.0001)) {
-					   vmax_junction = local_nominal_speed;
-			   }
+				vmax_junction = local_nominal_speed;
+			}
 
-			   if (jerk > max_xy_jerk) {
-					   vmax_junction *= (max_xy_jerk/jerk);
-				   }
-			   
-			   for (int i_axis = Z_AXIS; i_axis < STEPPER_COUNT; i_axis++) {
-					jerk = abs(previous_speed[i_axis] - current_speed[i_axis]);
-					if (jerk > axes[i_axis].max_axis_jerk) {
-					   vmax_junction *= (axes[i_axis].max_axis_jerk/jerk);
-					}
-			   }
-         } 
+			if (jerk > max_xy_jerk) {
+				vmax_junction *= (max_xy_jerk/jerk);
+			}
 
-		
-		/// set the max_entry_speed to the junction speed
-		block->max_entry_speed = vmax_junction;
+			for (int i_axis = Z_AXIS; i_axis < STEPPER_COUNT; i_axis++) {
+				jerk = abs(previous_speed[i_axis] - current_speed[i_axis]);
+				if (jerk > axes[i_axis].max_axis_jerk) {
+					vmax_junction *= (axes[i_axis].max_axis_jerk/jerk);
+				}
+			}
+		} 
+
+		/// set the max_entry_speed to the junction speed, or the stop speed if it's higher
+		block->max_entry_speed = max(vmax_junction, local_stop_speed); // TODO: optimize this. Some of this is redundant in some circumstances.
 		
 		// Initialize block entry speed. Compute based on deceleration to stop_speed.
 		/// the entry speed may change in the look ahead planner
-		float v_allowable = max_allowable_speed(-block->acceleration, minimum_planner_speed, local_millimeters);// stop_speed, local_millimeters);
+		float v_allowable = max_allowable_speed(-block->acceleration, local_stop_speed, local_millimeters);
 		block->entry_speed = min(vmax_junction, v_allowable);
 	
 
@@ -871,7 +876,7 @@ namespace planner {
 		block->step_event_count = local_step_event_count;
 		block->nominal_speed = local_nominal_speed;
 		block->acceleration_st = local_acceleration_st;
-		block->stop_speed = minimum_planner_speed;
+		block->stop_speed = local_stop_speed;
 
 		// Move buffer head
 		block_buffer.bumpHead();

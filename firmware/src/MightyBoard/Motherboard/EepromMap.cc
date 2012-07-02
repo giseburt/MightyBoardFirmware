@@ -35,8 +35,8 @@
 namespace eeprom {
 
 #define DEFAULT_P_VALUE  (7.0f)
-#define DEFAULT_I_VALUE  (0.325f)
-#define DEFAULT_D_VALUE  (36.0f)
+#define DEFAULT_I_VALUE  (0.25f)
+#define DEFAULT_D_VALUE  (60.0f)
 
 
 #define THERM_R0_DEFAULT_VALUE (100000)
@@ -87,16 +87,13 @@ void setDefaultsExtruder(int index,uint16_t eeprom_base)
 		eeprom_write_byte( (uint8_t*)eeprom_base +toolhead_eeprom_offsets::SLAVE_ID,slaveId);
 	}
 	setDefaultPID((eeprom_base + toolhead_eeprom_offsets::EXTRUDER_PID_BASE) );
-    setDefaultPID((eeprom_base + toolhead_eeprom_offsets::HBP_PID_BASE) );
-    setDefaultCoolingFan(eeprom_base + toolhead_eeprom_offsets::COOLING_FAN_SETTINGS);
+	setDefaultPID((eeprom_base + toolhead_eeprom_offsets::HBP_PID_BASE) );
+	setDefaultCoolingFan(eeprom_base + toolhead_eeprom_offsets::COOLING_FAN_SETTINGS);
 
-    eeprom_write_word((uint16_t*)(eeprom_base + toolhead_eeprom_offsets::BACKOFF_FORWARD_TIME),500);
-    eeprom_write_word((uint16_t*)(eeprom_base + toolhead_eeprom_offsets::BACKOFF_STOP_TIME),5);
-    eeprom_write_word((uint16_t*)(eeprom_base + toolhead_eeprom_offsets::BACKOFF_REVERSE_TIME),500);
-    eeprom_write_word((uint16_t*)(eeprom_base + toolhead_eeprom_offsets::BACKOFF_TRIGGER_TIME),300);
-
-
-
+	eeprom_write_word((uint16_t*)(eeprom_base + toolhead_eeprom_offsets::BACKOFF_FORWARD_TIME),500);
+	eeprom_write_word((uint16_t*)(eeprom_base + toolhead_eeprom_offsets::BACKOFF_STOP_TIME),5);
+	eeprom_write_word((uint16_t*)(eeprom_base + toolhead_eeprom_offsets::BACKOFF_REVERSE_TIME),500);
+	eeprom_write_word((uint16_t*)(eeprom_base + toolhead_eeprom_offsets::BACKOFF_TRIGGER_TIME),300);
 }
 
 
@@ -241,41 +238,41 @@ void factoryResetEEPROM() {
 
 	/// Write 'MainBoard' settings
 	eeprom_write_block("The Replicator",(uint8_t*)eeprom_offsets::MACHINE_NAME,20); // name is null
-    eeprom_write_block(&(vRefBase[0]),(uint8_t*)(eeprom_offsets::DIGI_POT_SETTINGS), 5 );
-    eeprom_write_byte((uint8_t*)eeprom_offsets::ENDSTOP_INVERSION, endstop_invert);
-    eeprom_write_byte((uint8_t*)eeprom_offsets::AXIS_HOME_DIRECTION, home_direction);
-    
-    setDefaultAxisHomePositions();
-    
-    /// store the default axis lengths for the machine
-    eeprom_write_block((uint8_t*)&(replicator_axis_lengths::axis_lengths[0]), (uint8_t*)(eeprom_offsets::AXIS_LENGTHS), 20);
-    
-    setDefaultsAcceleration();
-	
+	eeprom_write_block(&(vRefBase[0]),(uint8_t*)(eeprom_offsets::DIGI_POT_SETTINGS), 5 );
+	eeprom_write_byte((uint8_t*)eeprom_offsets::ENDSTOP_INVERSION, endstop_invert);
+	eeprom_write_byte((uint8_t*)eeprom_offsets::AXIS_HOME_DIRECTION, home_direction);
+
+	setDefaultAxisHomePositions();
+
+		/// store the default axis lengths for the machine
+	eeprom_write_block((uint8_t*)&(replicator_axis_lengths::axis_lengths[0]), (uint8_t*)(eeprom_offsets::AXIS_LENGTHS), 20);
+
+	setDefaultsAcceleration();
+
 	eeprom_write_byte((uint8_t*)eeprom_offsets::FILAMENT_HELP_SETTINGS, 1);
 
-    /// Thermal table settings
-    SetDefaultsThermal(eeprom_offsets::THERM_TABLE);
-    
-    /// Preheat heater settings
-    setDefaultsPreheat(eeprom_offsets::PREHEAT_SETTINGS);
+		/// Thermal table settings
+	SetDefaultsThermal(eeprom_offsets::THERM_TABLE);
 
-    /// write MightyBoard VID/PID. Only after verification does production write
-    /// a proper 'The Replicator' PID/VID to eeprom, and to the USB chip
-    eeprom_write_block(&(vidPid[0]),(uint8_t*)eeprom_offsets::VID_PID_INFO,4);
+		/// Preheat heater settings
+	setDefaultsPreheat(eeprom_offsets::PREHEAT_SETTINGS);
 
-    /// Write 'extruder 0' settings
-    setDefaultsExtruder(0,eeprom_offsets::T0_DATA_BASE);
+		/// write MightyBoard VID/PID. Only after verification does production write
+		/// a proper 'The Replicator' PID/VID to eeprom, and to the USB chip
+	eeprom_write_block(&(vidPid[0]),(uint8_t*)eeprom_offsets::VID_PID_INFO,4);
 
-    /// Write 'extruder 1' stttings
-    setDefaultsExtruder(1,eeprom_offsets::T1_DATA_BASE);
+		/// Write 'extruder 0' settings
+	setDefaultsExtruder(0,eeprom_offsets::T0_DATA_BASE);
 
-    /// write blink and buzz defaults
-    setDefaultLedEffects(eeprom_offsets::LED_STRIP_SETTINGS);
-    setDefaultBuzzEffects(eeprom_offsets::BUZZ_SETTINGS);
-    
-    // startup script flag is cleared
-    eeprom_write_byte((uint8_t*)eeprom_offsets::FIRST_BOOT_FLAG, 0);
+		/// Write 'extruder 1' stttings
+	setDefaultsExtruder(1,eeprom_offsets::T1_DATA_BASE);
+
+		/// write blink and buzz defaults
+	setDefaultLedEffects(eeprom_offsets::LED_STRIP_SETTINGS);
+	setDefaultBuzzEffects(eeprom_offsets::BUZZ_SETTINGS);
+
+		// startup script flag is cleared
+	eeprom_write_byte((uint8_t*)eeprom_offsets::FIRST_BOOT_FLAG, 0);
 }
 
 void setToolHeadCount(uint8_t count){

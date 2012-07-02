@@ -31,6 +31,7 @@
 // Maximum speed, in steps/second, of any stepper.
 // Set here because the planner uses it too.
 #define MAX_STEP_FREQUENCY 40000
+#define MIN_STEP_FREQUENCY (F_CPU/500000)
 
 namespace steppers {
 

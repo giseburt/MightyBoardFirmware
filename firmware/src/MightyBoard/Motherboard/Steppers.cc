@@ -833,7 +833,7 @@ bool doInterrupt() {
 				}
 			}
 
-			if ((feedrate_steps_remaining-=feedrate_multiplier) <= 0) {
+			if ((feedrate_steps_remaining -= feedrate_multiplier) <= 0) {
 				current_feedrate_index++;
 				prepareFeedrateIntervals();
 				feedrate_dirty = 1;
@@ -853,10 +853,11 @@ bool doInterrupt() {
 					feedrate = feedrate_target;
 				}
 			} else {
-				if (feedrate > feedrate_start)
+				if (feedrate > feedrate_start) {
 					// we decelerated longer than we accelerated, go to feedrate_target
 					feedrate = feedrate_target;
-				else
+					feedrate_changerate = 0;
+				} else
 					// we decelerate from the value we accelerated to, or the start value
 					feedrate = feedrate_start - feedrate;
 				
