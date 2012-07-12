@@ -269,8 +269,8 @@ namespace planner {
 			eeprom::storeToolheadToleranceDefaults();
 		}
 		
-		setAxisStepsPerMM(XSTEPS_PER_MM,0);           
-		setAxisStepsPerMM(YSTEPS_PER_MM,1);               
+		setAxisStepsPerMM(XSTEPS_PER_MM,0);
+		setAxisStepsPerMM(YSTEPS_PER_MM,1);
 		setAxisStepsPerMM(ZSTEPS_PER_MM,2);
 		setAxisStepsPerMM(ASTEPS_PER_MM,3);
 		setAxisStepsPerMM(BSTEPS_PER_MM,4);
@@ -800,9 +800,6 @@ namespace planner {
 		float local_nominal_speed = mm_per_second; // (mm/sec) Always > 0
 		block->nominal_rate = steps_per_second; // (step/sec) Always > 0
 
-		// The stop speed is the lesser of the minimum_planner_speed or the local_nominal_speed
-		float local_stop_speed = min(minimum_planner_speed, local_nominal_speed);
-
 		float current_speed[STEPPER_COUNT];
 		for(int i=0; i < STEPPER_COUNT; i++) {
 			current_speed[i] = delta_mm[i] * inverse_second;
@@ -823,33 +820,65 @@ namespace planner {
 
 		
 		// Compute the speed trasitions, or "jerks"
-		// The default value the junction speed is the stop speed
-		float vmax_junction = local_stop_speed; 
+		// Start with a safe speed, which we'll later use as our stop speed
+		float vmax_junction = max_xy_jerk/2; 
+	  float vmax_junction_factor = 1.0; 
+		// Check Z, A, and B
+		for (int i_axis = Z_AXIS; i_axis < STEPPER_COUNT; i_axis++) {
+			float half_jerk = axes[i_axis].max_axis_jerk/2;
+			if (abs(current_speed[i_axis]) > half_jerk) {
+		    vmax_junction = min(vmax_junction, half_jerk);
+			}
+		}
+	  vmax_junction = min(vmax_junction, local_nominal_speed);
+		float local_stop_speed = vmax_junction;
 		
-		if ((!block_buffer.isEmpty()) && (previous_nominal_speed > 0.0001)) {
+		/*
+
+		  if ((moves_queued > 1) && (previous_nominal_speed > 0.0001)) {
+		    float jerk = sqrt(pow((current_speed[X_AXIS]-previous_speed[X_AXIS]), 2)+pow((current_speed[Y_AXIS]-previous_speed[Y_AXIS]), 2));
+		    //    if((fabs(previous_speed[X_AXIS]) > 0.0001) || (fabs(previous_speed[Y_AXIS]) > 0.0001)) {
+		    vmax_junction = block->nominal_speed;
+		    //    }
+		    if (jerk > max_xy_jerk) {
+		      vmax_junction_factor = (max_xy_jerk/jerk);
+		    } 
+		    if(fabs(current_speed[Z_AXIS] - previous_speed[Z_AXIS]) > max_z_jerk) {
+		      vmax_junction_factor= min(vmax_junction_factor, (max_z_jerk/fabs(current_speed[Z_AXIS] - previous_speed[Z_AXIS])));
+		    } 
+		    if(fabs(current_speed[E_AXIS] - previous_speed[E_AXIS]) > max_e_jerk) {
+		      vmax_junction_factor = min(vmax_junction_factor, (max_e_jerk/fabs(current_speed[E_AXIS] - previous_speed[E_AXIS])));
+		    } 
+		    vmax_junction = min(previous_nominal_speed, vmax_junction * vmax_junction_factor); // Limit speed to max previous speed
+		  }
+		  block->max_entry_speed = vmax_junction;
+		*/
+		
+		if ((block_buffer.getUsedCount() > 1) && (previous_nominal_speed > 0.0001)) {
 			float jerk = sqrt(pow((current_speed[X_AXIS]-previous_speed[X_AXIS]), 2)+pow((current_speed[Y_AXIS]-previous_speed[Y_AXIS]), 2));
 			if((abs(previous_speed[X_AXIS]) > 0.0001) || (abs(previous_speed[Y_AXIS]) > 0.0001)) {
 				vmax_junction = local_nominal_speed;
 			}
 
 			if (jerk > max_xy_jerk) {
-				vmax_junction *= (max_xy_jerk/jerk);
+				vmax_junction_factor = (max_xy_jerk/jerk);
 			}
 
 			for (int i_axis = Z_AXIS; i_axis < STEPPER_COUNT; i_axis++) {
 				jerk = abs(previous_speed[i_axis] - current_speed[i_axis]);
 				if (jerk > axes[i_axis].max_axis_jerk) {
-					vmax_junction *= (axes[i_axis].max_axis_jerk/jerk);
+					vmax_junction_factor = min(vmax_junction_factor, (axes[i_axis].max_axis_jerk/jerk));
 				}
 			}
+			vmax_junction = min(previous_nominal_speed, vmax_junction * vmax_junction_factor); // Limit speed to max previous speed
 		} 
 
 		/// set the max_entry_speed to the junction speed, or the stop speed if it's higher
-		block->max_entry_speed = max(vmax_junction, local_stop_speed); // TODO: optimize this. Some of this is redundant in some circumstances.
+		block->max_entry_speed = vmax_junction;
 		
 		// Initialize block entry speed. Compute based on deceleration to stop_speed.
 		/// the entry speed may change in the look ahead planner
-		float v_allowable = max_allowable_speed(-block->acceleration, local_stop_speed, local_millimeters);
+		float v_allowable = max_allowable_speed(-block->acceleration, minimum_planner_speed, local_millimeters);
 		block->entry_speed = min(vmax_junction, v_allowable);
 	
 
@@ -877,6 +906,8 @@ namespace planner {
 		block->nominal_speed = local_nominal_speed;
 		block->acceleration_st = local_acceleration_st;
 		block->stop_speed = local_stop_speed;
+
+		block->calculate_trapezoid(block->stop_speed);
 
 		// Move buffer head
 		block_buffer.bumpHead();
